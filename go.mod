@@ -3,7 +3,7 @@ module github.com/porebric/resty
 go 1.21
 
 require (
-	github.com/porebric/configs v1.0.0
+	github.com/porebric/configs v1.0.1
 	github.com/porebric/logger v0.1.0
 	github.com/porebric/tracer v0.1.0
 	github.com/rs/cors v1.10.1
