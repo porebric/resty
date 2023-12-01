@@ -7,7 +7,8 @@ import (
 )
 
 const (
-	confServerPort = "server_port"
+	confServerPort   = "server_port"
+	confCloseTimeout = "close_timeout"
 )
 
 type options struct {
@@ -18,7 +19,7 @@ type options struct {
 func newOptions(ctx context.Context) *options {
 	o := new(options)
 	o.Port = int32(configs.Value(ctx, confServerPort).Int())
-	o.Timeout = configs.Value(ctx, confServerPort).Duration()
+	o.Timeout = configs.Value(ctx, confCloseTimeout).Duration()
 
 	if o.Timeout == 0 {
 		o.Timeout = 3 * time.Second
