@@ -3,13 +3,15 @@ package resty
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+
 	"github.com/porebric/logger"
 	"github.com/porebric/resty/middleware"
 	"github.com/porebric/resty/requests"
 	"github.com/porebric/resty/responses"
 	"github.com/porebric/tracer"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
-	"net/http"
 )
 
 var additionalMiddlewares []middleware.Middleware
@@ -36,6 +38,11 @@ func NewHandler(log *logger.Logger, mm ...middleware.Middleware) *handler {
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer getDeferCatchPanic(h.log, w)
+
+	if r.Method == http.MethodGet && r.URL.Path == "/metrics" {
+		promhttp.Handler().ServeHTTP(w, r)
+		return
+	}
 
 	ctx, span := tracer.StartSpan(context.Background(), r.URL.Path)
 	span.Tag("method", r.Method)

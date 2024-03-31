@@ -2,6 +2,7 @@ package resty
 
 import (
 	"context"
+
 	"github.com/porebric/resty/requests"
 	"github.com/porebric/resty/responses"
 )
