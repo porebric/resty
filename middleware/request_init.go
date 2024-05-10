@@ -1,9 +1,11 @@
 package middleware
 
 import (
+	"context"
+	"net/http"
+
 	"github.com/porebric/resty/errors"
 	"github.com/porebric/resty/requests"
-	"net/http"
 )
 
 const KeyRequestInit = "request_init"
@@ -17,12 +19,12 @@ func NewRequestInit(r *http.Request) *RequestInit {
 	return &RequestInit{r: r}
 }
 
-func (r *RequestInit) Execute(req requests.Request) (int32, string) {
+func (r *RequestInit) Execute(ctx context.Context, req requests.Request) (context.Context, int32, string) {
 	if err := req.Set(r.r); err != nil {
-		return errors.ErrorInvalidRequest, ""
+		return ctx, errors.ErrorInvalidRequest, ""
 	}
 
-	return r.next.Execute(req)
+	return r.next.Execute(ctx, req)
 }
 
 func (r *RequestInit) SetNext(next Middleware) {

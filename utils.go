@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"runtime/debug"
+
 	"github.com/porebric/logger"
 	"github.com/porebric/resty/errors"
 	"github.com/porebric/resty/middleware"
 	"github.com/porebric/resty/requests"
-	"net/http"
-	"runtime/debug"
 )
 
 func getDeferCatchPanic(log *logger.Logger, w http.ResponseWriter) {
@@ -25,7 +26,7 @@ func getDeferCatchPanic(log *logger.Logger, w http.ResponseWriter) {
 	}
 }
 
-func checkAction(r *http.Request, req requests.Request, w http.ResponseWriter) requests.Request {
+func checkAction(ctx context.Context, r *http.Request, req requests.Request, w http.ResponseWriter) (context.Context, requests.Request) {
 	checkRequest := &middleware.RequestCheck{}
 	for i := 0; i < len(additionalMiddlewares); i++ {
 		if i+1 == len(additionalMiddlewares) {
@@ -38,14 +39,14 @@ func checkAction(r *http.Request, req requests.Request, w http.ResponseWriter) r
 	initRequest := middleware.NewRequestInit(r)
 	initRequest.SetNext(additionalMiddlewares[0])
 
-	code, msg := initRequest.Execute(req)
+	ctx, code, msg := initRequest.Execute(ctx, req)
 
 	if code != errors.ErrorNoError {
 		resp, httpCode := errors.GetCustomError(msg, code)
 		w.WriteHeader(httpCode)
 		_ = json.NewEncoder(w).Encode(resp)
-		return nil
+		return ctx, nil
 	}
 
-	return req
+	return ctx, req
 }

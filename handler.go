@@ -60,7 +60,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req := checkAction(r, e.request, w)
+	ctx, req := checkAction(ctx, r, e.request, w)
 	if req == nil {
 		return
 	}
