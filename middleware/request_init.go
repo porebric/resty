@@ -20,7 +20,7 @@ func NewRequestInit(r *http.Request) *RequestInit {
 }
 
 func (r *RequestInit) Execute(ctx context.Context, req requests.Request) (context.Context, int32, string) {
-	if err := req.Set(r.r); err != nil {
+	if ctx, err := req.Set(ctx, r.r); err != nil {
 		return ctx, errors.ErrorInvalidRequest, ""
 	}
 

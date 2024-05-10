@@ -1,9 +1,12 @@
 package requests
 
-import "net/http"
+import (
+	"context"
+	"net/http"
+)
 
 type Request interface {
 	Validate() (bool, string, string)
-	Set(r *http.Request) error
+	Set(ctx context.Context, r *http.Request) (context.Context, error)
 	Middlewares() map[string]bool
 }
