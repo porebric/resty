@@ -3,9 +3,10 @@ package resty
 import (
 	"context"
 	"fmt"
+	"net/http"
+
 	"github.com/porebric/logger"
 	"github.com/porebric/resty/closer"
-	"net/http"
 )
 
 func RunServer(ctx context.Context, h *handler, closerFns ...func(ctx context.Context) error) {
@@ -21,7 +22,7 @@ func RunServer(ctx context.Context, h *handler, closerFns ...func(ctx context.Co
 			logger.Error(ctx, err, "serve")
 		}
 	}()
-	logger.Info(ctx, "start server", "port", 8080)
+	logger.Info(ctx, "start server", "port", opt.Port)
 	<-ctx.Done()
 
 	shutdownCtx, cancel := context.WithTimeout(logger.ToContext(context.Background(), logger.FromContext(ctx)), opt.Timeout)
