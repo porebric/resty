@@ -20,7 +20,7 @@ type handler struct {
 	*cors.Cors
 	log *logger.Logger
 
-	endpoints map[endpointKey]*endpoint
+	endpoints map[string]endpoint
 }
 
 func NewHandler(log *logger.Logger, mm ...middleware.Middleware) *handler {
@@ -32,7 +32,7 @@ func NewHandler(log *logger.Logger, mm ...middleware.Middleware) *handler {
 
 	return &handler{
 		log:       log,
-		endpoints: make(map[endpointKey]*endpoint),
+		endpoints: make(map[string]endpoint),
 	}
 }
 
@@ -52,15 +52,17 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	e, ok := h.endpoints[endpointKey{r.URL.Path, r.Method}]
-	if !ok || e == nil {
+	e, ok := h.endpoints[generateKey(r.Method, r.URL.Path)]
+	if !ok || e.request == nil {
 		logger.Warn(ctx, "unknown method", "method", r.Method, "path", r.URL.Path)
 		w.WriteHeader(405)
 		_ = json.NewEncoder(w).Encode(&responses.ErrorResponse{Message: "unknown method"})
 		return
 	}
 
-	ctx, req := checkAction(ctx, r, e.request, w)
+	newReq := e.request()
+
+	ctx, req := checkAction(ctx, r, newReq, w)
 	if req == nil {
 		return
 	}
@@ -74,8 +76,8 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (h *handler) Endpoint(path, method string, request requests.Request, action func(ctx context.Context, req requests.Request) (responses.Response, int), mm ...string) {
-	e := &endpoint{
+func (h *handler) Endpoint(path, method string, request func() requests.Request, action func(ctx context.Context, req requests.Request) (responses.Response, int), mm ...string) {
+	e := endpoint{
 		action:      action,
 		request:     request,
 		middlewares: make(map[string]bool),
@@ -86,5 +88,5 @@ func (h *handler) Endpoint(path, method string, request requests.Request, action
 	e.middlewares[middleware.KeyRequestValidate] = true
 	e.middlewares[middleware.KeyRequestInit] = true
 
-	h.endpoints[endpointKey{path, method}] = e
+	h.endpoints[generateKey(method, path)] = e
 }
