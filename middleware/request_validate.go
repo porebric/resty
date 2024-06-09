@@ -8,8 +8,6 @@ import (
 	"github.com/porebric/resty/requests"
 )
 
-const KeyRequestValidate = "request_validate"
-
 type RequestValidate struct {
 	next Middleware
 }
@@ -31,8 +29,4 @@ func (r *RequestValidate) Execute(ctx context.Context, req requests.Request) (co
 
 func (r *RequestValidate) SetNext(next Middleware) {
 	r.next = next
-}
-
-func (r *RequestValidate) GetKey() string {
-	return KeyRequestValidate
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/porebric/logger"
+	"github.com/porebric/resty/errors"
 	"github.com/porebric/resty/middleware"
 	"github.com/porebric/resty/requests"
 	"github.com/porebric/resty/responses"
@@ -13,17 +14,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-var additionalMiddlewares []middleware.Middleware
-
-func InitMiddlewares(mm ...middleware.Middleware) {
-	additionalMiddlewares = make([]middleware.Middleware, len(mm)+1, len(mm)+1)
-	additionalMiddlewares[0] = &middleware.RequestValidate{}
-	for i := len(mm) - 1; i > -1; i-- {
-		additionalMiddlewares[i+1] = mm[i]
-	}
-}
-
-func serveHTTP[R requests.Request](e endpoint[R], log *logger.Logger) func(w http.ResponseWriter, r *http.Request) {
+func serveHTTP[R requests.Request](
+	e endpoint[R],
+	log *logger.Logger,
+	initRequest func(ctx context.Context, r *http.Request) (context.Context, R, error),
+	mm ...func() middleware.Middleware,
+) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer getDeferCatchPanic(log, w)
 
@@ -47,9 +43,18 @@ func serveHTTP[R requests.Request](e endpoint[R], log *logger.Logger) func(w htt
 			return
 		}
 
-		var req R
+		ctx, req, err := initRequest(ctx, r)
+		if err != nil {
+			resp, httpCode := errors.GetCustomError("", errors.ErrorInvalidRequest)
+			w.WriteHeader(httpCode)
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
 
-		ctx = checkAction(ctx, r, req, w)
+		ctx, ok := checkAction(ctx, req, w, mm...)
+		if !ok {
+			return
+		}
 
 		logger.Info(ctx, "request", "content", req, "method", r.Method, "path", r.URL.Path)
 		resp, httpCode := e.action(ctx, req)
@@ -64,17 +69,17 @@ func serveHTTP[R requests.Request](e endpoint[R], log *logger.Logger) func(w htt
 	}
 }
 
-func Endpoint[R requests.Request](log *logger.Logger, path, method string, action func(context.Context, R) (responses.Response, int), mm ...string) {
+func Endpoint[R requests.Request](
+	log *logger.Logger,
+	path, method string,
+	initRequest func(ctx context.Context, r *http.Request) (context.Context, R, error),
+	action func(context.Context, R) (responses.Response, int),
+	mm ...func() middleware.Middleware,
+) {
 	e := endpoint[R]{
-		action:      action,
-		middlewares: make(map[string]bool),
-		method:      method,
+		action: action,
+		method: method,
 	}
-	for _, m := range mm {
-		e.middlewares[m] = true
-	}
-	e.middlewares[middleware.KeyRequestValidate] = true
-	e.middlewares[middleware.KeyRequestInit] = true
 
-	http.HandleFunc(path, serveHTTP(e, log))
+	http.HandleFunc(path, serveHTTP(e, log, initRequest, mm...))
 }

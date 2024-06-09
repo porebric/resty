@@ -26,27 +26,36 @@ func getDeferCatchPanic(log *logger.Logger, w http.ResponseWriter) {
 	}
 }
 
-func checkAction[R requests.Request](ctx context.Context, r *http.Request, req R, w http.ResponseWriter) context.Context {
-	checkRequest := &middleware.RequestCheck{}
-	for i := 0; i < len(additionalMiddlewares); i++ {
-		if i+1 == len(additionalMiddlewares) {
-			additionalMiddlewares[i].SetNext(checkRequest)
-			break
-		}
-		additionalMiddlewares[i].SetNext(additionalMiddlewares[i+1])
+func checkAction[R requests.Request](ctx context.Context, req R, w http.ResponseWriter, mm ...func() middleware.Middleware) (context.Context, bool) {
+
+	middlewares := make([]middleware.Middleware, 1, len(mm)+1)
+	middlewares[0] = new(middleware.RequestValidate)
+
+	if len(mm) == 0 {
+		return execute(ctx, middlewares, req, w)
 	}
 
-	initRequest := middleware.NewRequestInit(r)
-	initRequest.SetNext(additionalMiddlewares[0])
+	for _, m := range mm {
+		newMiddleware := m()
+		middlewares[len(middlewares)-1].SetNext(newMiddleware)
 
-	ctx, code, msg := initRequest.Execute(ctx, req)
+		middlewares = append(middlewares, newMiddleware)
+	}
+
+	return execute(ctx, middlewares, req, w)
+}
+
+func execute(ctx context.Context, mm []middleware.Middleware, req requests.Request, w http.ResponseWriter) (context.Context, bool) {
+	checkRequest := &middleware.RequestCheck{}
+	mm[len(mm)-1].SetNext(checkRequest)
+	ctx, code, msg := mm[0].Execute(ctx, req)
 
 	if code != errors.ErrorNoError {
 		resp, httpCode := errors.GetCustomError(msg, code)
 		w.WriteHeader(httpCode)
 		_ = json.NewEncoder(w).Encode(resp)
-		return ctx
+		return ctx, false
 	}
 
-	return ctx
+	return ctx, true
 }

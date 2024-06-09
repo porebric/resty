@@ -10,7 +10,6 @@ import (
 type Middleware interface {
 	Execute(context.Context, requests.Request) (context.Context, int32, string)
 	SetNext(Middleware)
-	GetKey() string
 }
 
 type RequestCheck struct {
@@ -23,8 +22,4 @@ func (r *RequestCheck) Execute(ctx context.Context, _ requests.Request) (context
 
 func (r *RequestCheck) SetNext(next Middleware) {
 	r.next = next
-}
-
-func (r *RequestCheck) GetKey() string {
-	return ""
 }
