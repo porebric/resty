@@ -47,12 +47,9 @@ func serveHTTP[R requests.Request](e endpoint[R], log *logger.Logger) func(w htt
 			return
 		}
 
-		var newReq R
+		var req R
 
-		ctx, req := checkAction(ctx, r, newReq, w)
-		if req == nil {
-			return
-		}
+		ctx = checkAction(ctx, r, req, w)
 
 		logger.Info(ctx, "request", "content", req, "method", r.Method, "path", r.URL.Path)
 		resp, httpCode := e.action(ctx, req)
