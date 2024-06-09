@@ -26,7 +26,7 @@ func getDeferCatchPanic(log *logger.Logger, w http.ResponseWriter) {
 	}
 }
 
-func checkAction(ctx context.Context, r *http.Request, req requests.Request, w http.ResponseWriter) (context.Context, requests.Request) {
+func checkAction[R requests.Request](ctx context.Context, r *http.Request, req R, w http.ResponseWriter) (context.Context, R) {
 	checkRequest := &middleware.RequestCheck{}
 	for i := 0; i < len(additionalMiddlewares); i++ {
 		if i+1 == len(additionalMiddlewares) {
@@ -45,7 +45,7 @@ func checkAction(ctx context.Context, r *http.Request, req requests.Request, w h
 		resp, httpCode := errors.GetCustomError(msg, code)
 		w.WriteHeader(httpCode)
 		_ = json.NewEncoder(w).Encode(resp)
-		return ctx, nil
+		return ctx, req
 	}
 
 	return ctx, req

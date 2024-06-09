@@ -9,7 +9,7 @@ import (
 	"github.com/porebric/resty/closer"
 )
 
-func RunServer(ctx context.Context, h *handler, closerFns ...func(ctx context.Context) error) {
+func RunServer(ctx context.Context, closerFns ...func(ctx context.Context) error) {
 	c := &closer.Closer{}
 	for _, closerFn := range closerFns {
 		c.Add(closerFn)
@@ -18,7 +18,7 @@ func RunServer(ctx context.Context, h *handler, closerFns ...func(ctx context.Co
 	opt := newOptions(ctx)
 
 	go func() {
-		if err := http.ListenAndServe(fmt.Sprintf(":%d", opt.Port), setCors(h)); err != nil {
+		if err := http.ListenAndServe(fmt.Sprintf(":%d", opt.Port), setCors()); err != nil {
 			logger.Error(ctx, err, "serve")
 		}
 	}()

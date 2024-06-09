@@ -1,8 +1,9 @@
 package resty
 
 import (
-	"github.com/rs/cors"
 	"net/http"
+
+	"github.com/rs/cors"
 )
 
 var corsAllowedOrigins []string
@@ -15,9 +16,9 @@ func SetCors(allowedOrigins, allowedMethods, allowedHeaders []string) {
 	corsAllowedHeaders = allowedHeaders
 }
 
-func setCors(handler *handler) http.Handler {
+func setCors() http.Handler {
 	if len(corsAllowedOrigins) == 0 || len(corsAllowedMethods) == 0 || len(corsAllowedHeaders) == 0 {
-		return handler
+		return http.DefaultServeMux
 	}
 	co := cors.New(cors.Options{
 		AllowedOrigins:   corsAllowedOrigins,
@@ -26,5 +27,5 @@ func setCors(handler *handler) http.Handler {
 		AllowCredentials: true,
 	})
 
-	return co.Handler(handler)
+	return co.Handler(http.DefaultServeMux)
 }
