@@ -24,7 +24,7 @@ func (r *RequestValidate) Execute(ctx context.Context, req requests.Request) (co
 	if msg == "" {
 		msg = "invalid"
 	}
-	return ctx, errors.ErrorInvalidRequest, fmt.Sprintf("field %s: %s", field, msg)
+	return ctx, errors.ErrorInvalidRequest, fmt.Sprintf(`%s: %s`, field, msg)
 }
 
 func (r *RequestValidate) SetNext(next Middleware) {
