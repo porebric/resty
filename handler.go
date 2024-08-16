@@ -28,11 +28,6 @@ func serveHTTP[R requests.Request](
 
 		defer getDeferCatchPanic(log, w)
 
-		if r.Method == http.MethodGet && r.URL.Path == "/metrics" {
-			promhttp.Handler().ServeHTTP(w, r)
-			return
-		}
-
 		ctx, span := tracer.StartSpan(context.Background(), r.URL.Path)
 		span.Tag("method", r.Method)
 		defer span.End()
@@ -94,6 +89,8 @@ func Endpoint[R requests.Request](l *logger.Logger, req func(ctx context.Context
 				return
 			}
 		})
+
+		http.Handle("/metrics", promhttp.Handler())
 	}
 
 	var r R
