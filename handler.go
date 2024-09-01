@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/pprof"
+	_ "net/http/pprof"
 	"sync/atomic"
 
 	"github.com/porebric/logger"
@@ -115,11 +115,6 @@ func Endpoint[R requests.Request](l *logger.Logger, req func(ctx context.Context
 		})
 
 		http.Handle("/metrics", promhttp.Handler())
-		http.HandleFunc("/debug/pprof/", pprof.Index)
-		http.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-		http.HandleFunc("/debug/pprof/profile", pprof.Profile)
-		http.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-		http.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	}
 
 	var r R
