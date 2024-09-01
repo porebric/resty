@@ -87,14 +87,14 @@ func serveHTTP[R requests.Request](
 		logger.Info(ctx, "request", "content", req, "method", r.Method, "path", r.URL.Path)
 		resp, httpCode = action(ctx, req)
 
+		w.WriteHeader(httpCode)
+
 		if err = resp.PrepareResponse(w); err != nil {
 			w.WriteHeader(http.StatusExpectationFailed)
 			_, _ = w.Write([]byte{})
 
 			return
 		}
-
-		w.WriteHeader(httpCode)
 
 		return
 	}
