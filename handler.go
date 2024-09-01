@@ -44,15 +44,23 @@ func serveHTTP[R requests.Request](
 
 		defer getDeferCatchPanic(log, w)
 		defer requestCounter.WithLabelValues(r.URL.Path, http.StatusText(httpCode)).Inc()
+
 		ctx, span := tracer.StartSpan(context.Background(), r.URL.Path)
 		span.Tag("method", r.Method)
 		defer span.End()
 
 		ctx = logger.ToContext(ctx, log.With("token", span.TraceId()))
+		var req R
+
+		defer func() {
+			if httpCode >= http.StatusBadRequest {
+				logger.Warn(ctx, "request", "content", req, "method", r.Method, "path", r.URL.Path, "response", resp)
+			} else {
+				logger.Info(ctx, "request", "content", req, "method", r.Method, "path", r.URL.Path, "response", resp)
+			}
+		}()
 
 		w.Header().Set("Content-Type", "application/json")
-
-		var req R
 
 		ok := false
 		for _, method := range req.Methods() {
@@ -84,7 +92,6 @@ func serveHTTP[R requests.Request](
 			return
 		}
 
-		logger.Info(ctx, "request", "content", req, "method", r.Method, "path", r.URL.Path)
 		resp, httpCode = action(ctx, req)
 
 		w.WriteHeader(httpCode)
