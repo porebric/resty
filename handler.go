@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/pprof"
 	"sync/atomic"
 
 	"github.com/porebric/logger"
@@ -12,7 +13,18 @@ import (
 	"github.com/porebric/resty/requests"
 	"github.com/porebric/resty/responses"
 	"github.com/porebric/tracer"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+var (
+	requestCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_requests_total",
+			Help: "The number of HTTP requests, tracked by path and response code.",
+		},
+		[]string{"path", "code"},
+	)
 )
 
 var first uint32
@@ -24,10 +36,14 @@ func serveHTTP[R requests.Request](
 	mm ...func() middleware.Middleware,
 ) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var err error
+		var (
+			err      error
+			httpCode int
+			resp     responses.Response
+		)
 
 		defer getDeferCatchPanic(log, w)
-
+		defer requestCounter.WithLabelValues(r.URL.Path, http.StatusText(httpCode)).Inc()
 		ctx, span := tracer.StartSpan(context.Background(), r.URL.Path)
 		span.Tag("method", r.Method)
 		defer span.End()
@@ -47,16 +63,19 @@ func serveHTTP[R requests.Request](
 
 		if !ok {
 			logger.Warn(ctx, "unknown method", "method", r.Method, "path", r.URL.Path)
-			w.WriteHeader(405)
+			httpCode = http.StatusMethodNotAllowed
+
+			w.WriteHeader(httpCode)
 			_ = json.NewEncoder(w).Encode(&responses.ErrorResponse{Message: "unknown method"})
+
 			return
 		}
 
-		ctx, req, err = initRequest(ctx, r)
-		if err != nil {
-			resp, httpCode := errors.GetCustomError("", errors.ErrorInvalidRequest)
+		if ctx, req, err = initRequest(ctx, r); err != nil {
+			resp, httpCode = errors.GetCustomError("", errors.ErrorInvalidRequest)
 			w.WriteHeader(httpCode)
 			_ = json.NewEncoder(w).Encode(resp)
+
 			return
 		}
 
@@ -66,13 +85,16 @@ func serveHTTP[R requests.Request](
 		}
 
 		logger.Info(ctx, "request", "content", req, "method", r.Method, "path", r.URL.Path)
-		resp, httpCode := action(ctx, req)
-		w.WriteHeader(httpCode)
+		resp, httpCode = action(ctx, req)
 
 		if err = resp.PrepareResponse(w); err != nil {
 			w.WriteHeader(http.StatusExpectationFailed)
 			_, _ = w.Write([]byte{})
+
+			return
 		}
+
+		w.WriteHeader(httpCode)
 
 		return
 	}
@@ -80,6 +102,8 @@ func serveHTTP[R requests.Request](
 
 func Endpoint[R requests.Request](l *logger.Logger, req func(ctx context.Context, r *http.Request) (context.Context, R, error), action func(context.Context, R) (responses.Response, int), mm ...func() middleware.Middleware) {
 	if atomic.CompareAndSwapUint32(&first, 0, 1) {
+		prometheus.MustRegister(requestCounter)
+
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/" {
 				logger.Warn(logger.ToContext(context.Background(), l), "not found", "method", r.Method, "path", r.URL.Path)
@@ -91,6 +115,11 @@ func Endpoint[R requests.Request](l *logger.Logger, req func(ctx context.Context
 		})
 
 		http.Handle("/metrics", promhttp.Handler())
+		http.HandleFunc("/debug/pprof/", pprof.Index)
+		http.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		http.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		http.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		http.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	}
 
 	var r R
