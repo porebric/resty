@@ -38,14 +38,15 @@ func serveHTTP[R requests.Request](
 ) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
-			err         error
-			httpCode    int
-			httpCodeStr string
-			resp        responses.Response
+			err      error
+			httpCode int
+			resp     responses.Response
 		)
 
 		defer getDeferCatchPanic(log, w)
-		defer requestCounter.WithLabelValues(r.URL.Path, httpCodeStr).Inc()
+		defer func() {
+			requestCounter.WithLabelValues(r.URL.Path, fmt.Sprintf("%d", httpCode)).Inc()
+		}()
 
 		ctx, span := tracer.StartSpan(context.Background(), r.URL.Path)
 		span.Tag("method", r.Method)
@@ -74,7 +75,6 @@ func serveHTTP[R requests.Request](
 		if !ok {
 			logger.Warn(ctx, "unknown method", "method", r.Method, "path", r.URL.Path)
 			httpCode = http.StatusMethodNotAllowed
-			httpCodeStr = fmt.Sprintf("%d", httpCode)
 
 			w.WriteHeader(httpCode)
 			_ = json.NewEncoder(w).Encode(&responses.ErrorResponse{Message: "unknown method"})
@@ -84,7 +84,6 @@ func serveHTTP[R requests.Request](
 
 		if ctx, req, err = initRequest(ctx, r); err != nil {
 			resp, httpCode = errors.GetCustomError("", errors.ErrorInvalidRequest)
-			httpCodeStr = fmt.Sprintf("%d", httpCode)
 
 			w.WriteHeader(httpCode)
 			_ = json.NewEncoder(w).Encode(resp)
@@ -98,17 +97,12 @@ func serveHTTP[R requests.Request](
 		}
 
 		resp, httpCode = action(ctx, req)
-		httpCodeStr = fmt.Sprintf("%d", httpCode)
 
 		w.WriteHeader(httpCode)
 
 		if err = resp.PrepareResponse(w); err != nil {
 			w.WriteHeader(http.StatusExpectationFailed)
-			httpCodeStr = fmt.Sprintf("%d", http.StatusExpectationFailed)
-
 			_, _ = w.Write([]byte{})
-
-			return
 		}
 
 		return
