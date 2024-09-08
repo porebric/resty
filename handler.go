@@ -3,6 +3,7 @@ package resty
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	_ "net/http/pprof"
 	"sync/atomic"
@@ -43,7 +44,7 @@ func serveHTTP[R requests.Request](
 		)
 
 		defer getDeferCatchPanic(log, w)
-		defer requestCounter.WithLabelValues(r.URL.Path, http.StatusText(httpCode)).Inc()
+		defer requestCounter.WithLabelValues(r.URL.Path, fmt.Sprintf("%d", httpCode)).Inc()
 
 		ctx, span := tracer.StartSpan(context.Background(), r.URL.Path)
 		span.Tag("method", r.Method)
