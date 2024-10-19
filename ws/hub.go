@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"runtime/debug"
 	"slices"
 	"sync"
 
@@ -60,12 +59,6 @@ func NewHub(
 }
 
 func (h *Hub) Run(logFn func() *logger.Logger) {
-	defer func() {
-		if rec := recover(); rec != any(nil) {
-			logger.Fatal(logger.ToContext(context.Background(), logFn()), fmt.Sprintf("ws run critical error: %v", rec), "stacktrace", string(debug.Stack()))
-		}
-	}()
-
 	for {
 		select {
 		case registerClient := <-h.register:
