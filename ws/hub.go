@@ -111,12 +111,23 @@ func (h *Hub) Run(logFn func() *logger.Logger) {
 				if b, isLogin := broadcast.(*login.Broadcast); isLogin {
 					var err Error
 					if c.ctx, err = h.loginFn(c.ctx, b); err.Code == "" {
+
+						if _, kindOk := c.hub.broadcasts[b.Kind]; !kindOk {
+							c.send(newError(InvalidMsgPrefix, "invalid kind", c.key).Msg())
+							break
+						}
+
 						c.kind = b.Kind
-						logger.Debug(c.ctx, "user auth", "user_id", c.key, "kind", b.Kind)
+
 						h.SendToClient(c.ctx, c.key, &c.uniqueKey, c.kind, []byte(fmt.Sprintf(`{"login": true, "kind": "%s"}`, b.Kind)))
 					} else {
 						c.send(err.Msg())
 					}
+					break
+				}
+
+				if c.kind == "" {
+					c.send(newError(AuthPrefix, "not auth", c.key).Msg())
 					break
 				}
 

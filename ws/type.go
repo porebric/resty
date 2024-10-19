@@ -20,6 +20,7 @@ const (
 	UndefinedPrefix      = KeyType("undefined")
 	InvalidMsgPrefix     = KeyType("invalid_msg")
 	MaxConnectionsPrefix = KeyType("max connections")
+	AuthPrefix           = KeyType("auth")
 )
 
 type Broadcast interface {
