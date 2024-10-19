@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	_ "net/http/pprof"
-	"sync/atomic"
 
 	"github.com/porebric/logger"
 	"github.com/porebric/resty/errors"
@@ -15,7 +14,6 @@ import (
 	"github.com/porebric/resty/responses"
 	"github.com/porebric/tracer"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
@@ -28,22 +26,21 @@ var (
 	)
 )
 
-var first uint32
-
 func serveHTTP[R requests.Request](
 	action func(context.Context, R) (responses.Response, int),
-	log *logger.Logger,
+	logFn func() *logger.Logger,
 	initRequest func(ctx context.Context, r *http.Request) (context.Context, R, error),
 	mm ...func() middleware.Middleware,
 ) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		defer getDeferCatchPanic(logFn(), w)
+
 		var (
 			err      error
 			httpCode int
 			resp     responses.Response
 		)
 
-		defer getDeferCatchPanic(log, w)
 		defer func() {
 			requestCounter.WithLabelValues(r.URL.Path, fmt.Sprintf("%d", httpCode)).Inc()
 		}()
@@ -52,7 +49,7 @@ func serveHTTP[R requests.Request](
 		span.Tag("method", r.Method)
 		defer span.End()
 
-		ctx = logger.ToContext(ctx, log.With("token", span.TraceId()))
+		ctx = logger.ToContext(ctx, logFn().With("token", span.TraceId()))
 		var req R
 
 		defer func() {
@@ -109,23 +106,7 @@ func serveHTTP[R requests.Request](
 	}
 }
 
-func Endpoint[R requests.Request](l *logger.Logger, req func(ctx context.Context, r *http.Request) (context.Context, R, error), action func(context.Context, R) (responses.Response, int), mm ...func() middleware.Middleware) {
-	if atomic.CompareAndSwapUint32(&first, 0, 1) {
-		prometheus.MustRegister(requestCounter)
-
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/" {
-				logger.Warn(logger.ToContext(context.Background(), l), "not found", "method", r.Method, "path", r.URL.Path)
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(404)
-				_ = json.NewEncoder(w).Encode(&responses.ErrorResponse{Message: "not found"})
-				return
-			}
-		})
-
-		http.Handle("/metrics", promhttp.Handler())
-	}
-
-	var r R
-	http.HandleFunc(r.Path(), serveHTTP(action, l, req, mm...))
+func Endpoint[R requests.Request](r Router, req func(ctx context.Context, r *http.Request) (context.Context, R, error), action func(context.Context, R) (responses.Response, int), mm ...func() middleware.Middleware) {
+	var exampleReq R
+	r.MuxRouter().HandleFunc(exampleReq.Path(), serveHTTP(action, r.LogFn, req, mm...)).Methods(exampleReq.Methods()...)
 }
