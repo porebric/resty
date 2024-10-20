@@ -10,8 +10,8 @@ type Broadcast struct {
 	uuid uuid.UUID
 	key  string
 
-	Token string `json:"token"`
-	Kind  string `json:"kind"`
+	Token  string `json:"token"`
+	Action string `json:"action"`
 }
 
 func (b *Broadcast) Set(key string, uuid uuid.UUID) {

@@ -41,7 +41,7 @@ type client struct {
 	sendCh    chan []byte
 	uniqueKey uuid.UUID
 	userId    int
-	kind      string
+	action    string
 	key       string
 }
 
@@ -153,7 +153,7 @@ func (c *client) send(body []byte) {
 
 func (c *client) waitAuth() {
 	time.Sleep(60 * time.Second)
-	if c.kind == "" {
+	if c.action == "" {
 		c.hub.unregister <- c
 	}
 }

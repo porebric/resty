@@ -112,21 +112,21 @@ func (h *Hub) Run(logFn func() *logger.Logger) {
 					var err Error
 					if c.ctx, err = h.loginFn(c.ctx, b); err.Code == "" {
 
-						if _, kindOk := c.hub.broadcasts[b.Kind]; !kindOk {
-							c.send(newError(InvalidMsgPrefix, "invalid kind", c.key).Msg())
+						if _, actionOk := c.hub.broadcasts[b.Action]; !actionOk {
+							c.send(newError(InvalidMsgPrefix, "invalid action", c.key).Msg())
 							break
 						}
 
-						c.kind = b.Kind
+						c.action = b.Action
 
-						h.SendToClient(c.ctx, c.key, &c.uniqueKey, c.kind, []byte(fmt.Sprintf(`{"login": true, "kind": "%s"}`, b.Kind)))
+						h.SendToClient(c.ctx, c.key, &c.uniqueKey, c.action, []byte(fmt.Sprintf(`{"login": true, "action": "%s"}`, b.Action)))
 					} else {
 						c.send(err.Msg())
 					}
 					break
 				}
 
-				if c.kind == "" {
+				if c.action == "" {
 					c.send(newError(AuthPrefix, "not auth", c.key).Msg())
 					break
 				}
@@ -164,7 +164,7 @@ func (h *Hub) Close(_ context.Context) error {
 	return nil
 }
 
-func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, kind string, body []byte) {
+func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, action string, body []byte) {
 	cc, ok := h.clients[key]
 	if !ok || len(cc) == 0 {
 		logger.Warn(ctx, "invalid user id for message", "user", key)
@@ -176,7 +176,7 @@ func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, kin
 			continue
 		}
 
-		if c.kind == kind {
+		if c.action == action {
 			c.send(body)
 		}
 	}
