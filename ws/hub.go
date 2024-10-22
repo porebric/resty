@@ -71,13 +71,12 @@ func (h *Hub) Run(logFn func() *logger.Logger) {
 				h.clients[registerClient.key][0].send(
 					newError(MaxConnectionsPrefix, fmt.Sprintf("max connections %d", maxUserConnections), h.clients[registerClient.key][0].key).Msg(),
 				)
-
-				h.deleteClient(logFn, registerClient.key, 0)
-
-				break
+				h.unregister <- h.clients[registerClient.key][0]
+				continue
 			}
 
 			logger.Debug(registerClient.ctx, "register user", "key", registerClient.key)
+
 		case unregisterClient := <-h.unregister:
 			if cc, ok := h.clients[unregisterClient.key]; ok {
 				for i, c := range cc {
@@ -92,6 +91,7 @@ func (h *Hub) Run(logFn func() *logger.Logger) {
 					delete(h.clients, unregisterClient.key)
 				}
 			}
+
 		case broadcast := <-h.broadcast:
 			if broadcast == nil {
 				continue
@@ -112,14 +112,12 @@ func (h *Hub) Run(logFn func() *logger.Logger) {
 				if b, isLogin := broadcast.(*login.Broadcast); isLogin {
 					var err Error
 					if c.ctx, err = h.loginFn(c.ctx, b); err.Code == "" {
-
 						if _, actionOk := c.hub.broadcasts[b.Action]; !actionOk {
 							c.send(newError(InvalidMsgPrefix, "invalid action", c.key).Msg())
 							break
 						}
 
 						c.action = b.Action
-
 						h.SendToClient(c.ctx, c.key, &c.uniqueKey, c.action, []byte(fmt.Sprintf(`{"login": true, "action": "%s"}`, b.Action)))
 					} else {
 						c.send(err.Msg())
@@ -135,7 +133,6 @@ func (h *Hub) Run(logFn func() *logger.Logger) {
 				if err := h.handleFn(c.ctx, broadcast); err.Code != "" {
 					c.send(err.Msg())
 				}
-
 				break
 			}
 		}
@@ -145,23 +142,13 @@ func (h *Hub) Run(logFn func() *logger.Logger) {
 func (h *Hub) Close(_ context.Context) error {
 	h.isClosed = true
 
-	deletedClients := make(map[string][]*client, len(h.clients))
-	for k, clientList := range h.clients {
-		deletedClients[k] = make([]*client, 0, len(clientList))
-		for _, c := range clientList {
-			deletedClients[k] = append(deletedClients[k], c)
-		}
-	}
-
-	for _, clientList := range deletedClients {
-
+	for _, clientList := range h.clients {
 		for _, c := range clientList {
 			h.unregister <- c
 		}
 	}
 
 	h.wg.Wait()
-
 	return nil
 }
 
@@ -181,8 +168,6 @@ func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, act
 			c.send(body)
 		}
 	}
-
-	return
 }
 
 func (h *Hub) deleteClient(logFn func() *logger.Logger, key string, i int) {

@@ -11,14 +11,10 @@ import (
 )
 
 const (
-	// writeWait Time allowed to write a message to the peer.
-	writeWait = 10 * time.Second
-	// pongWait Time allowed to read the next pong message from the peer.
-	pongWait = 60 * time.Second
-	// pingPeriod Send pings to peer with this period. Must be less than pongWait.
-	pingPeriod = (pongWait * 9) / 10
-	// maxMessageSize Maximum message size allowed from peer.
-	maxMessageSize = 512
+	writeWait      = 10 * time.Second    // Время, разрешенное на отправку сообщения
+	pongWait       = 60 * time.Second    // Время, разрешенное для чтения следующего pong-сообщения
+	pingPeriod     = (pongWait * 9) / 10 // Период отправки ping-сообщений
+	maxMessageSize = 512                 // Максимальный размер сообщения, разрешенный от клиента
 )
 
 var (
@@ -45,10 +41,10 @@ type client struct {
 	key       string
 }
 
-func newClient(ctx context.Context, hub *Hub, sendCh chan []byte, coon *websocket.Conn, key string) *client {
+func newClient(ctx context.Context, hub *Hub, sendCh chan []byte, conn *websocket.Conn, key string) *client {
 	return &client{
 		hub:       hub,
-		conn:      coon,
+		conn:      conn,
 		sendCh:    sendCh,
 		ctx:       ctx,
 		uniqueKey: uuid.New(),
@@ -58,8 +54,8 @@ func newClient(ctx context.Context, hub *Hub, sendCh chan []byte, coon *websocke
 
 func (c *client) read() {
 	defer func() {
-		if c.conn.Close() != nil {
-			return
+		if err := c.conn.Close(); err != nil {
+			logger.Error(c.ctx, err, "failed to close connection", "user", c.key)
 		}
 		c.hub.unregister <- c
 	}()
@@ -83,7 +79,6 @@ func (c *client) read() {
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNormalClosure) {
 				logger.Error(c.ctx, err, "read message", "user", c.key)
-				break
 			}
 			break
 		}
@@ -138,9 +133,11 @@ func (c *client) write() {
 			if err = w.Close(); err != nil {
 				return
 			}
+
 		case <-ticker.C:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				logger.Error(c.ctx, err, "ping message", "user", c.key)
 				return
 			}
 		}
