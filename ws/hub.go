@@ -185,7 +185,7 @@ func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, act
 }
 
 func (h *Hub) deleteClient(key string, i int) {
-	close(h.clients[key][0].sendCh)
+	close(h.clients[key][i].sendCh)
 	h.clients[key] = slices.Delete(h.clients[key], i, i+1)
 	activeClients.Dec()
 	h.wg.Done()
