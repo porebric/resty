@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"runtime/debug"
 	"slices"
 	"sync"
 
@@ -71,7 +72,7 @@ func (h *Hub) Run(logFn func() *logger.Logger) {
 					newError(MaxConnectionsPrefix, fmt.Sprintf("max connections %d", maxUserConnections), h.clients[registerClient.key][0].key).Msg(),
 				)
 
-				h.deleteClient(registerClient.key, 0)
+				h.deleteClient(logFn, registerClient.key, 0)
 
 				break
 			}
@@ -82,7 +83,7 @@ func (h *Hub) Run(logFn func() *logger.Logger) {
 				for i, c := range cc {
 					if c.uniqueKey == unregisterClient.uniqueKey {
 						logger.Debug(unregisterClient.ctx, "unregister user", "key", unregisterClient.key)
-						h.deleteClient(unregisterClient.key, i)
+						h.deleteClient(logFn, unregisterClient.key, i)
 						break
 					}
 				}
@@ -184,7 +185,12 @@ func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, act
 	return
 }
 
-func (h *Hub) deleteClient(key string, i int) {
+func (h *Hub) deleteClient(logFn func() *logger.Logger, key string, i int) {
+	defer func() {
+		if r := recover(); r != nil {
+			logFn().Error(fmt.Errorf("%v", r), "delete client", "key", key, "stacktrace", string(debug.Stack()))
+		}
+	}()
 	close(h.clients[key][i].sendCh)
 	h.clients[key] = slices.Delete(h.clients[key], i, i+1)
 	activeClients.Dec()
