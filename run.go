@@ -43,7 +43,7 @@ func RunServer(ctx context.Context, router Router, closerFns ...func(ctx context
 	}
 
 	go func() {
-		if err := http.ListenAndServe(fmt.Sprintf(":%d", opt.Port), routerHandler); err != nil {
+		if err := http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", opt.Port), routerHandler); err != nil {
 			logger.Error(ctx, err, "serve")
 		}
 	}()
