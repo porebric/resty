@@ -68,11 +68,10 @@ func (h *Hub) Run(logFn func() *logger.Logger) {
 			h.clients[registerClient.key] = append(h.clients[registerClient.key], registerClient)
 
 			if len(h.clients[registerClient.key]) > maxUserConnections {
-				h.clients[registerClient.key][0].send(
-					newError(MaxConnectionsPrefix, fmt.Sprintf("max connections %d", maxUserConnections), h.clients[registerClient.key][0].key).Msg(),
-				)
-				h.unregister <- h.clients[registerClient.key][0]
-				continue
+				h.clients[registerClient.key][0].send(newError(MaxConnectionsPrefix, fmt.Sprintf("max connections %d", maxUserConnections), h.clients[registerClient.key][0].key).Msg())
+				logger.Debug(h.clients[registerClient.key][0].ctx, "unregister user", "key", h.clients[registerClient.key][0].key)
+				h.deleteClient(logFn, h.clients[registerClient.key][0].key, 0)
+				break
 			}
 
 			logger.Debug(registerClient.ctx, "register user", "key", registerClient.key)
