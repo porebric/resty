@@ -176,6 +176,11 @@ func (h *Hub) deleteClient(logFn func() *logger.Logger, key string, i int) {
 		}
 	}()
 	close(h.clients[key][i].sendCh)
+
+	if err := h.clients[key][i].conn.Close(); err != nil {
+		logFn().Error(err, "failed to close websocket connection", "key", key)
+	}
+
 	h.clients[key] = slices.Delete(h.clients[key], i, i+1)
 	activeClients.Dec()
 	h.wg.Done()
