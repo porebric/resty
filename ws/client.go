@@ -77,8 +77,8 @@ func (c *client) read() {
 	for {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNormalClosure) {
-				logger.Error(c.ctx, err, "read message", "user", c.key)
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
+				logger.Warn(c.ctx, "read message", "user", c.key, "error", err)
 			}
 			break
 		}
