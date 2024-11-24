@@ -42,12 +42,14 @@ type client struct {
 }
 
 func newClient(ctx context.Context, hub *Hub, sendCh chan []byte, conn *websocket.Conn, key string) *client {
+	uid := uuid.New()
+
 	return &client{
 		hub:       hub,
 		conn:      conn,
 		sendCh:    sendCh,
-		ctx:       ctx,
-		uniqueKey: uuid.New(),
+		ctx:       logger.ToContext(ctx, logger.FromContext(ctx).With("uuid", uid, "user", key)),
+		uniqueKey: uid,
 		key:       key,
 	}
 }
@@ -55,20 +57,20 @@ func newClient(ctx context.Context, hub *Hub, sendCh chan []byte, conn *websocke
 func (c *client) read() {
 	defer func() {
 		if err := c.conn.Close(); err != nil {
-			logger.Error(c.ctx, err, "failed to close connection", "user", c.key)
+			logger.Error(c.ctx, err, "failed to close connection")
 		}
 		c.hub.unregister <- c
 	}()
 
 	c.conn.SetReadLimit(maxMessageSize)
 	if err := c.conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-		logger.Error(c.ctx, err, "new read deadline", "user", c.key)
+		logger.Error(c.ctx, err, "new read deadline")
 		return
 	}
 
 	c.conn.SetPongHandler(func(string) error {
 		if err := c.conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-			logger.Error(c.ctx, err, "new read deadline", "user", c.key)
+			logger.Error(c.ctx, err, "new read deadline")
 			return err
 		}
 		return nil
@@ -78,7 +80,7 @@ func (c *client) read() {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-				logger.Warn(c.ctx, "read message", "user", c.key, "error", err)
+				logger.Warn(c.ctx, "read message", "error", err)
 			}
 			break
 		}
@@ -137,7 +139,7 @@ func (c *client) write() {
 		case <-ticker.C:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				logger.Error(c.ctx, err, "ping message", "user", c.key)
+				logger.Error(c.ctx, err, "ping message")
 				return
 			}
 		}

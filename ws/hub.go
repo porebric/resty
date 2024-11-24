@@ -152,9 +152,14 @@ func (h *Hub) Close(_ context.Context) error {
 }
 
 func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, action string, body []byte) {
+	uid := ""
+	if uuid != nil {
+		uid = uuid.String()
+	}
+	logger.Debug(ctx, "get response for client", "uuid", uid, "user", key)
 	cc, ok := h.clients[key]
 	if !ok || len(cc) == 0 {
-		logger.Warn(ctx, "invalid user id for message", "user", key)
+		logger.Warn(ctx, "invalid user id for message", "uuid", uid, "user", key)
 		return
 	}
 
