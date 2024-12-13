@@ -45,7 +45,7 @@ func serveHTTP[R requests.Request](
 			requestCounter.WithLabelValues(r.URL.Path, fmt.Sprintf("%d", httpCode)).Inc()
 		}()
 
-		ctx, span := tracer.StartSpan(context.Background(), r.URL.Path)
+		ctx, span := tracer.StartSpan(r.Context(), r.URL.Path)
 		span.Tag("method", r.Method)
 		defer span.End()
 
