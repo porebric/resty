@@ -38,7 +38,7 @@ type broadcastContainerWithBody struct {
 	Broadcast Broadcast `json:"body"`
 }
 
-func getBroadcast(ctx context.Context, b []byte, key string, uuid uuid.UUID, broadcasts map[string]Broadcast) Broadcast {
+func getBroadcast(ctx context.Context, b []byte, key string, uuid uuid.UUID, broadcasts map[string]func() Broadcast) Broadcast {
 	var container broadcastContainer
 
 	if err := json.Unmarshal(bytes.TrimSpace(bytes.Replace(b, newline, space, -1)), &container); err != nil {
@@ -54,7 +54,7 @@ func getBroadcast(ctx context.Context, b []byte, key string, uuid uuid.UUID, bro
 
 	containerWithBody := broadcastContainerWithBody{
 		Action:    container.Action,
-		Broadcast: broadcast,
+		Broadcast: broadcast(),
 	}
 
 	if err := json.Unmarshal(bytes.TrimSpace(bytes.Replace(b, newline, space, -1)), &containerWithBody); err != nil {

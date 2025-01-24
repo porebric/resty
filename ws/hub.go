@@ -31,7 +31,7 @@ type Hub struct {
 	unregister chan *client
 	handleFn   func(ctx context.Context, broadcast Broadcast) Error
 	loginFn    func(ctx context.Context, broadcast *login.Broadcast) (context.Context, Error)
-	broadcasts map[string]Broadcast
+	broadcasts map[string]func() Broadcast
 	keyFn      func(r *http.Request) string
 	wg         sync.WaitGroup
 	isClosed   bool
@@ -40,10 +40,12 @@ type Hub struct {
 func NewHub(
 	handleFn func(context.Context, Broadcast) Error,
 	loginFn func(ctx context.Context, broadcast *login.Broadcast) (context.Context, Error),
-	broadcasts map[string]Broadcast,
+	broadcasts map[string]func() Broadcast,
 	keyFn func(r *http.Request) string,
 ) *Hub {
-	broadcasts[login.Action] = new(login.Broadcast)
+	broadcasts[login.Action] = func() Broadcast {
+		return new(login.Broadcast)
+	}
 
 	hub := &Hub{
 		broadcast:  make(chan Broadcast),
