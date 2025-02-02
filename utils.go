@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/porebric/resty/responses"
 	"net/http"
 	"runtime/debug"
 
@@ -26,7 +27,7 @@ func getDeferCatchPanic(log *logger.Logger, w http.ResponseWriter) {
 	}
 }
 
-func checkAction[R requests.Request](ctx context.Context, req R, w http.ResponseWriter, mm ...func() middleware.Middleware) (context.Context, bool) {
+func checkAction[R requests.Request](ctx context.Context, req R, w http.ResponseWriter, mm ...func() middleware.Middleware) (context.Context, *responses.ErrorResponse, int) {
 
 	middlewares := make([]middleware.Middleware, 1, len(mm)+1)
 	middlewares[0] = new(middleware.RequestValidate)
@@ -45,17 +46,15 @@ func checkAction[R requests.Request](ctx context.Context, req R, w http.Response
 	return execute(ctx, middlewares, req, w)
 }
 
-func execute(ctx context.Context, mm []middleware.Middleware, req requests.Request, w http.ResponseWriter) (context.Context, bool) {
+func execute(ctx context.Context, mm []middleware.Middleware, req requests.Request, w http.ResponseWriter) (context.Context, *responses.ErrorResponse, int) {
 	checkRequest := &middleware.RequestCheck{}
 	mm[len(mm)-1].SetNext(checkRequest)
 	ctx, code, msg := mm[0].Execute(ctx, req)
 
 	if code != errors.ErrorNoError {
 		resp, httpCode := errors.GetCustomError(msg, code)
-		w.WriteHeader(httpCode)
-		_ = json.NewEncoder(w).Encode(resp)
-		return ctx, false
+		return ctx, resp, httpCode
 	}
 
-	return ctx, true
+	return ctx, nil, 0
 }

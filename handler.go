@@ -41,24 +41,22 @@ func serveHTTP[R requests.Request](
 			resp     responses.Response
 		)
 
+		var req R
+
+		path, showPath := req.Path()
+		logPath := path
+		if showPath {
+			logPath = r.URL.Path
+		}
+
 		defer func() {
-			requestCounter.WithLabelValues(r.URL.Path, fmt.Sprintf("%d", httpCode)).Inc()
+			requestCounter.WithLabelValues(fmt.Sprintf("%s:%s", r.Method, path), fmt.Sprintf("%d", httpCode)).Inc()
 		}()
 
-		ctx, span := tracer.StartSpan(r.Context(), r.URL.Path)
-		span.Tag("method", r.Method)
+		ctx, span := tracer.StartSpan(r.Context(), fmt.Sprintf("%s:%s", r.Method, path))
 		defer span.End()
 
 		ctx = logger.ToContext(ctx, logFn().With("token", span.TraceId()))
-		var req R
-
-		defer func() {
-			if httpCode >= http.StatusBadRequest {
-				logger.Warn(ctx, "request", "content", req, "method", r.Method, "path", r.URL.Path, "response", resp)
-			} else {
-				logger.Info(ctx, "request", "content", req, "method", r.Method, "path", r.URL.Path, "response", resp)
-			}
-		}()
 
 		w.Header().Set("Content-Type", "application/json")
 
@@ -70,26 +68,28 @@ func serveHTTP[R requests.Request](
 		}
 
 		if !ok {
-			logger.Warn(ctx, "unknown method", "method", r.Method, "path", r.URL.Path)
 			httpCode = http.StatusMethodNotAllowed
+			resp = &responses.ErrorResponse{Message: "unknown method"}
 
 			w.WriteHeader(httpCode)
-			_ = json.NewEncoder(w).Encode(&responses.ErrorResponse{Message: "unknown method"})
+			_ = json.NewEncoder(w).Encode(resp)
 
+			logger.Info(ctx, "http request", "content", req.String(), "method", r.Method, "path", logPath, "response", resp.String())
 			return
 		}
 
 		if ctx, req, err = initRequest(ctx, r); err != nil {
 			resp, httpCode = errors.GetCustomError("", errors.ErrorInvalidRequest)
-
 			w.WriteHeader(httpCode)
 			_ = json.NewEncoder(w).Encode(resp)
-
+			logger.Info(ctx, "http request", "content", req.String(), "method", r.Method, "path", logPath, "response", resp.String())
 			return
 		}
 
-		ctx, ok = checkAction(ctx, req, w, mm...)
-		if !ok {
+		if ctx, resp, httpCode = checkAction(ctx, req, w, mm...); resp != nil {
+			w.WriteHeader(httpCode)
+			_ = json.NewEncoder(w).Encode(resp)
+			logger.Info(ctx, "http request", "content", req.String(), "method", r.Method, "path", logPath, "response", resp.String())
 			return
 		}
 
@@ -102,11 +102,13 @@ func serveHTTP[R requests.Request](
 			_, _ = w.Write([]byte{})
 		}
 
+		logger.Info(ctx, "http request", "content", req.String(), "method", r.Method, "path", logPath, "response", resp.String())
 		return
 	}
 }
 
 func Endpoint[R requests.Request](r Router, req func(ctx context.Context, r *http.Request) (context.Context, R, error), action func(context.Context, R) (responses.Response, int), mm ...func() middleware.Middleware) {
 	var exampleReq R
-	r.MuxRouter().HandleFunc(exampleReq.Path(), serveHTTP(action, r.LogFn, req, mm...)).Methods(exampleReq.Methods()...)
+	path, _ := exampleReq.Path()
+	r.MuxRouter().HandleFunc(path, serveHTTP(action, r.LogFn, req, mm...)).Methods(exampleReq.Methods()...)
 }
