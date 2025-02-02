@@ -53,6 +53,10 @@ func execute(ctx context.Context, mm []middleware.Middleware, req requests.Reque
 
 	if code != errors.ErrorNoError {
 		resp, httpCode := errors.GetCustomError(msg, code)
+		if httpCode == 0 {
+			logger.Warn(ctx, "invalid middleware http code", "code", code)
+			httpCode = http.StatusBadRequest
+		}
 		return ctx, resp, httpCode
 	}
 
