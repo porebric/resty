@@ -60,5 +60,5 @@ func execute(ctx context.Context, mm []middleware.Middleware, req requests.Reque
 		return ctx, resp, httpCode
 	}
 
-	return ctx, nil, 0
+	return ctx, &responses.ErrorResponse{}, 0
 }

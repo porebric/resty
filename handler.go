@@ -86,7 +86,8 @@ func serveHTTP[R requests.Request](
 			return
 		}
 
-		if ctx, resp, httpCode = checkAction(ctx, req, w, mm...); resp != nil {
+		ctx, resp, httpCode = checkAction(ctx, req, w, mm...)
+		if httpCode != 0 {
 			w.WriteHeader(httpCode)
 			_ = json.NewEncoder(w).Encode(resp)
 			logger.Info(ctx, "http request", "content", req.String(), "method", r.Method, "path", logPath, "response", resp.String())
