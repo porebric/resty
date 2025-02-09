@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,6 +40,8 @@ type client struct {
 	userId    int
 	action    string
 	key       string
+
+	mu sync.Mutex
 }
 
 func newClient(ctx context.Context, hub *Hub, sendCh chan []byte, conn *websocket.Conn, key string) *client {
@@ -102,12 +105,12 @@ func (c *client) write() {
 	for {
 		select {
 		case message, ok := <-c.sendCh:
-			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			w, err := c.conn.NextWriter(websocket.TextMessage)
 			if err != nil {
 				logger.Warn(c.ctx, "next writer", "msg", string(message))
@@ -117,19 +120,6 @@ func (c *client) write() {
 			if _, err = w.Write(message); err != nil {
 				logger.Warn(c.ctx, "write", "msg", string(message))
 				return
-			}
-
-			n := len(c.sendCh)
-
-			for i := 0; i < n; i++ {
-				if _, err = w.Write(newline); err != nil {
-					logger.Warn(c.ctx, "write new line", "msg", string(message))
-					return
-				}
-				if _, err = w.Write(<-c.sendCh); err != nil {
-					logger.Warn(c.ctx, "write sendCh", "msg", string(message))
-					return
-				}
 			}
 
 			if err = w.Close(); err != nil {
