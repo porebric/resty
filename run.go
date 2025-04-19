@@ -15,12 +15,11 @@ func RunServer(ctx context.Context, router Router, closerFns ...func(ctx context
 	c := &closer.Closer{}
 
 	if router.GetWsHub() != nil {
-		go router.GetWsHub().Run(router.LogFn)
+		go router.GetWsHub().Run()
+
 		router.MuxRouter().HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 			ws.NewHandler(router.LogFn).ServeWs(router.GetWsHub(), w, r)
 		})
-
-		closerFns = append([]func(ctx context.Context) error{router.GetWsHub().Close}, closerFns...)
 	}
 
 	for _, closerFn := range closerFns {

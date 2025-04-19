@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -41,7 +42,8 @@ type client struct {
 	action    string
 	key       string
 
-	mu sync.Mutex
+	closeOnce sync.Once
+	isClosed  atomic.Bool
 }
 
 func newClient(ctx context.Context, hub *Hub, sendCh chan []byte, conn *websocket.Conn, key string) *client {
@@ -100,12 +102,14 @@ func (c *client) write() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
-		_ = c.conn.Close()
+		c.safeClose()
+		logger.Info(c.ctx, "websocket connect closed", "user", c.key)
 	}()
+
 	for {
 		select {
 		case message, ok := <-c.sendCh:
-			if !ok {
+			if !ok || message == nil {
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
@@ -113,12 +117,12 @@ func (c *client) write() {
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			w, err := c.conn.NextWriter(websocket.TextMessage)
 			if err != nil {
-				logger.Warn(c.ctx, "next writer", "msg", string(message))
+				logger.Error(c.ctx, err, "next writer")
 				return
 			}
 
 			if _, err = w.Write(message); err != nil {
-				logger.Warn(c.ctx, "write", "msg", string(message))
+				logger.Error(c.ctx, err, "write message")
 				return
 			}
 
@@ -136,13 +140,47 @@ func (c *client) write() {
 	}
 }
 
-func (c *client) send(body []byte) {
-	c.sendCh <- body
+func (c *client) safeClose() {
+	c.closeOnce.Do(func() {
+		c.isClosed.Store(true)
+		if c.conn != nil {
+			_ = c.conn.Close()
+		}
+		close(c.sendCh)
+	})
+}
+
+func (c *client) send(data []byte) {
+	if c.isClosed.Load() {
+		return
+	}
+
+	select {
+	case c.sendCh <- data:
+	case <-time.After(500 * time.Millisecond):
+		logger.Warn(c.ctx, "send timeout")
+		c.hub.unregister <- c
+	}
 }
 
 func (c *client) waitAuth() {
-	time.Sleep(60 * time.Second)
-	if c.action == "" {
-		c.hub.unregister <- c
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Minute))
+	defer cancel()
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			if c.action == "" {
+				c.hub.unregister <- c
+			}
+			return
+		case <-ticker.C:
+			if c.action != "" {
+				return
+			}
+		}
 	}
 }

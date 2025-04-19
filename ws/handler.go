@@ -16,11 +16,6 @@ func NewHandler(logFn func() *logger.Logger) *Handler {
 }
 
 func (h *Handler) ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	if hub.isClosed {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		_ = conn.Close()

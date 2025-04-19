@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"runtime/debug"
 	"slices"
 	"sync"
 
@@ -33,8 +32,7 @@ type Hub struct {
 	loginFn    func(ctx context.Context, broadcast *login.Broadcast) (context.Context, Error)
 	broadcasts map[string]func() Broadcast
 	keyFn      func(r *http.Request) string
-	wg         sync.WaitGroup
-	isClosed   bool
+	mu         sync.Mutex
 }
 
 func NewHub(
@@ -48,118 +46,144 @@ func NewHub(
 	}
 
 	hub := &Hub{
-		broadcast:  make(chan Broadcast),
-		register:   make(chan *client),
-		unregister: make(chan *client),
+		broadcast:  make(chan Broadcast, 1024),
+		register:   make(chan *client, 1024),
+		unregister: make(chan *client, 1024),
 		clients:    make(map[string][]*client),
 		handleFn:   handleFn,
 		loginFn:    loginFn,
 		broadcasts: broadcasts,
 		keyFn:      keyFn,
+		mu:         sync.Mutex{},
 	}
 
 	return hub
 }
 
-func (h *Hub) Run(logFn func() *logger.Logger) {
+func (h *Hub) Run() {
 	for {
 		select {
 		case registerClient := <-h.register:
-			h.wg.Add(1)
-			activeClients.Inc()
-			h.clients[registerClient.key] = append(h.clients[registerClient.key], registerClient)
-
-			if len(h.clients[registerClient.key]) > maxUserConnections {
-				h.clients[registerClient.key][0].send(newError(MaxConnectionsPrefix, fmt.Sprintf("max connections %d", maxUserConnections), h.clients[registerClient.key][0].key).Msg())
-				logger.Debug(h.clients[registerClient.key][0].ctx, "unregister user", "key", h.clients[registerClient.key][0].key)
-				h.deleteClient(logFn, h.clients[registerClient.key][0].key, 0)
-				break
-			}
-
-			logger.Debug(registerClient.ctx, "register user", "key", registerClient.key)
-
+			h.doRegister(registerClient)
 		case unregisterClient := <-h.unregister:
-			if cc, ok := h.clients[unregisterClient.key]; ok {
-				for i, c := range cc {
-					if c.uniqueKey == unregisterClient.uniqueKey {
-						logger.Debug(unregisterClient.ctx, "unregister user", "key", unregisterClient.key)
-						h.deleteClient(logFn, unregisterClient.key, i)
-						break
-					}
-				}
-
-				if len(cc) == 0 {
-					delete(h.clients, unregisterClient.key)
-				}
-			}
-
+			h.doUnRegister(unregisterClient)
 		case broadcast := <-h.broadcast:
-			if broadcast == nil {
-				continue
-			}
-
-			clients, ok := h.clients[broadcast.GetKey()]
-			if !ok {
-				continue
-			}
-
-			for _, c := range clients {
-				if c.uniqueKey != broadcast.GetUuid() {
-					continue
-				}
-
-				logger.Debug(c.ctx, "get message", "user_id", c.key, "body", broadcast)
-
-				if b, isLogin := broadcast.(*login.Broadcast); isLogin {
-					var err Error
-					if c.ctx, err = h.loginFn(c.ctx, b); err.Code == "" {
-						if _, actionOk := c.hub.broadcasts[b.Action]; !actionOk {
-							c.send(newError(InvalidMsgPrefix, "invalid action", c.key).Msg())
-							break
-						}
-
-						c.action = b.Action
-						h.SendToClient(c.ctx, c.key, &c.uniqueKey, c.action, []byte(fmt.Sprintf(`{"login": true, "action": "%s"}`, b.Action)))
-					} else {
-						c.send(err.Msg())
-					}
-					break
-				}
-
-				if c.action == "" {
-					c.send(newError(AuthPrefix, "not auth", c.key).Msg())
-					break
-				}
-
-				if err := h.handleFn(c.ctx, broadcast); err.Code != "" {
-					c.send(err.Msg())
-				}
-				break
-			}
+			h.handleBroadcast(broadcast)
 		}
 	}
 }
 
-func (h *Hub) Close(_ context.Context) error {
-	h.isClosed = true
+func (h *Hub) doUnRegister(client *client) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
-	for _, clientList := range h.clients {
-		for _, c := range clientList {
-			h.unregister <- c
+	cc, ok := h.clients[client.key]
+	if !ok {
+		return
+	}
+
+	logger.Debug(client.ctx, "unregister user", "uuid", client.uniqueKey, "user", client.key)
+
+	for i, c := range cc {
+		if c.uniqueKey == client.uniqueKey {
+			client.safeClose()
+			h.clients[client.key] = slices.Delete(h.clients[client.key], i, i+1)
+			activeClients.Dec()
+			break
 		}
 	}
 
-	h.wg.Wait()
-	return nil
+	if len(h.clients[client.key]) == 0 {
+		delete(h.clients, client.key)
+		logger.Debug(client.ctx, "delete user", "user", client.key)
+	}
+}
+
+func (h *Hub) doRegister(client *client) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.clients[client.key] = append(h.clients[client.key], client)
+	activeClients.Inc()
+
+	logger.Debug(client.ctx, "register user", "uuid", client.uniqueKey, "user", client.key)
+
+	if len(h.clients[client.key]) >= maxUserConnections+1 {
+		client.send(newError(MaxConnectionsPrefix, fmt.Sprintf("max connections %d", maxUserConnections), client.key).Msg())
+		client.send(nil)
+	}
+}
+
+func (h *Hub) handleBroadcast(broadcast Broadcast) {
+	h.mu.Lock()
+
+	if broadcast == nil {
+		h.mu.Unlock()
+		return
+	}
+
+	clients, ok := h.clients[broadcast.GetKey()]
+	if !ok {
+		h.mu.Unlock()
+		return
+	}
+
+	var currentClient *client
+
+	for _, c := range clients {
+		if c.uniqueKey == broadcast.GetUuid() {
+			currentClient = c
+			break
+		}
+	}
+
+	h.mu.Unlock()
+
+	if currentClient == nil {
+		return
+	}
+
+	logger.Debug(currentClient.ctx, "get message", "uuid", currentClient.uniqueKey, "user", currentClient.key, "body", broadcast)
+
+	if b, isLogin := broadcast.(*login.Broadcast); isLogin {
+		var err Error
+		if currentClient.ctx, err = h.loginFn(currentClient.ctx, b); err.Code == "" {
+			if _, actionOk := currentClient.hub.broadcasts[b.Action]; !actionOk {
+				currentClient.send(newError(InvalidMsgPrefix, "invalid action", currentClient.key).Msg())
+				return
+			}
+
+			currentClient.action = b.Action
+			h.SendToClient(currentClient.ctx, currentClient.key, &currentClient.uniqueKey, currentClient.action, []byte(fmt.Sprintf(`{"login": true, "action": "%s"}`, b.Action)))
+		} else {
+			currentClient.send(err.Msg())
+		}
+		return
+	}
+
+	if currentClient.action == "" {
+		currentClient.send(newError(AuthPrefix, "not auth", currentClient.key).Msg())
+		return
+	}
+
+	if err := h.handleFn(currentClient.ctx, broadcast); err.Code != "" {
+		currentClient.send(err.Msg())
+	}
 }
 
 func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, action string, body []byte) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	uid := ""
 	if uuid != nil {
 		uid = uuid.String()
 	}
+
 	logger.Debug(ctx, "get response for client", "uuid", uid, "user", key)
+
 	cc, ok := h.clients[key]
+
 	if !ok || len(cc) == 0 {
 		logger.Warn(ctx, "invalid user id for message", "uuid", uid, "user", key)
 		return
@@ -170,21 +194,8 @@ func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, act
 			continue
 		}
 
-		if c.action == action {
+		if c.action == action || action == "" {
 			c.send(body)
 		}
 	}
-}
-
-func (h *Hub) deleteClient(logFn func() *logger.Logger, key string, i int) {
-	defer func() {
-		if r := recover(); r != nil {
-			logFn().Error(fmt.Errorf("%v", r), "delete client", "key", key, "stacktrace", string(debug.Stack()))
-		}
-	}()
-	close(h.clients[key][i].sendCh)
-
-	h.clients[key] = slices.Delete(h.clients[key], i, i+1)
-	activeClients.Dec()
-	h.wg.Done()
 }
