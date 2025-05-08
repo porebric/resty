@@ -7,16 +7,16 @@ import (
 const Action = "login"
 
 type Broadcast struct {
-	uuid uuid.UUID
-	key  string
+	key string
 
-	Token  string `json:"token"`
-	Action string `json:"action"`
+	Token  string    `json:"token"`
+	Action string    `json:"action"`
+	Uuid   uuid.UUID `json:"uuid"`
 }
 
 func (b *Broadcast) Set(key string, uuid uuid.UUID) {
 	b.key = key
-	b.uuid = uuid
+	b.Uuid = uuid
 }
 
 func (b *Broadcast) GetKey() string {
@@ -24,5 +24,5 @@ func (b *Broadcast) GetKey() string {
 }
 
 func (b *Broadcast) GetUuid() uuid.UUID {
-	return b.uuid
+	return b.Uuid
 }
