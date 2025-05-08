@@ -82,10 +82,10 @@ func (h *Hub) doUnRegister(client *client) {
 		return
 	}
 
-	logger.Debug(client.ctx, "unregister user", "uuid", client.uniqueKey, "user", client.key)
+	logger.Debug(client.ctx, "unregister user", "uuid", client.uuid, "user", client.key)
 
 	for i, c := range cc {
-		if c.uniqueKey == client.uniqueKey {
+		if c.uuid == client.uuid {
 			client.safeClose()
 			h.clients[client.key] = slices.Delete(h.clients[client.key], i, i+1)
 			activeClients.Dec()
@@ -106,7 +106,7 @@ func (h *Hub) doRegister(client *client) {
 	h.clients[client.key] = append(h.clients[client.key], client)
 	activeClients.Inc()
 
-	logger.Debug(client.ctx, "register user", "uuid", client.uniqueKey, "user", client.key)
+	logger.Debug(client.ctx, "register user", "uuid", client.uuid, "user", client.key)
 
 	if len(h.clients[client.key]) >= maxUserConnections+1 {
 		client.send(newError(MaxConnectionsPrefix, fmt.Sprintf("max connections %d", maxUserConnections), client.key).Msg())
@@ -131,7 +131,7 @@ func (h *Hub) handleBroadcast(broadcast Broadcast) {
 	var currentClient *client
 
 	for _, c := range clients {
-		if c.uniqueKey == broadcast.GetUuid() {
+		if c.uuid == broadcast.GetUuid() {
 			currentClient = c
 			break
 		}
@@ -143,7 +143,7 @@ func (h *Hub) handleBroadcast(broadcast Broadcast) {
 		return
 	}
 
-	logger.Debug(currentClient.ctx, "get message", "uuid", currentClient.uniqueKey, "user", currentClient.key, "body", broadcast)
+	logger.Debug(currentClient.ctx, "get message", "uuid", currentClient.uuid, "user", currentClient.key, "body", broadcast)
 
 	if b, isLogin := broadcast.(*login.Broadcast); isLogin {
 		var err Error
@@ -154,7 +154,13 @@ func (h *Hub) handleBroadcast(broadcast Broadcast) {
 			}
 
 			currentClient.action = b.Action
-			h.SendToClient(currentClient.ctx, currentClient.key, &currentClient.uniqueKey, currentClient.action, []byte(fmt.Sprintf(`{"login": true, "action": "%s"}`, b.Action)))
+			h.SendToClient(
+				currentClient.ctx,
+				currentClient.key,
+				&currentClient.uuid,
+				currentClient.action,
+				[]byte(fmt.Sprintf(`{"login": true, "action": "%s", "uuid": "%s"}`, b.Action, currentClient.uuid)),
+			)
 		} else {
 			currentClient.send(err.Msg())
 		}
@@ -190,7 +196,7 @@ func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, act
 	}
 
 	for _, c := range cc {
-		if uuid != nil && c.uniqueKey != *uuid {
+		if uuid != nil && c.uuid != *uuid {
 			continue
 		}
 

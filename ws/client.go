@@ -33,14 +33,14 @@ var upgrader = websocket.Upgrader{
 }
 
 type client struct {
-	hub       *Hub
-	conn      *websocket.Conn
-	ctx       context.Context
-	sendCh    chan []byte
-	uniqueKey uuid.UUID
-	userId    int
-	action    string
-	key       string
+	hub    *Hub
+	conn   *websocket.Conn
+	ctx    context.Context
+	sendCh chan []byte
+	uuid   uuid.UUID
+	userId int
+	action string
+	key    string
 
 	closeOnce sync.Once
 	isClosed  atomic.Bool
@@ -50,12 +50,12 @@ func newClient(ctx context.Context, hub *Hub, sendCh chan []byte, conn *websocke
 	uid := uuid.New()
 
 	return &client{
-		hub:       hub,
-		conn:      conn,
-		sendCh:    sendCh,
-		ctx:       logger.ToContext(ctx, logger.FromContext(ctx).With("uuid", uid, "user", key)),
-		uniqueKey: uid,
-		key:       key,
+		hub:    hub,
+		conn:   conn,
+		sendCh: sendCh,
+		ctx:    logger.ToContext(ctx, logger.FromContext(ctx).With("uuid", uid, "user", key)),
+		uuid:   uid,
+		key:    key,
 	}
 }
 
@@ -90,7 +90,7 @@ func (c *client) read() {
 			break
 		}
 
-		if b := getBroadcast(c.ctx, message, c.key, c.uniqueKey, c.hub.broadcasts); b != nil {
+		if b := getBroadcast(c.ctx, message, c.key, c.uuid, c.hub.broadcasts); b != nil {
 			c.hub.broadcast <- b
 		} else {
 			c.send(newError(InvalidMsgPrefix, "invalid body or action", c.key).Msg())
