@@ -205,3 +205,24 @@ func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, act
 		}
 	}
 }
+
+func (h *Hub) RewriteAction(ctx context.Context, key string, uuid uuid.UUID, action string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	logger.Debug(ctx, "start rewrite action", "uuid", uuid, "user", key)
+
+	cc, ok := h.clients[key]
+
+	if !ok || len(cc) == 0 {
+		logger.Warn(ctx, "invalid user id for message", "uuid", uuid, "user", key)
+		return
+	}
+
+	for _, c := range cc {
+		if c.uuid == uuid {
+			logger.Debug(ctx, fmt.Sprintf("finish rewrite action from %s to %s", c.action, action), "uuid", uuid, "user", key)
+			c.action = action
+		}
+	}
+}
