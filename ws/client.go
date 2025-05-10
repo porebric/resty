@@ -33,14 +33,15 @@ var upgrader = websocket.Upgrader{
 }
 
 type client struct {
-	hub    *Hub
-	conn   *websocket.Conn
-	ctx    context.Context
-	sendCh chan []byte
-	uuid   uuid.UUID
-	userId int
-	action string
-	key    string
+	hub        *Hub
+	conn       *websocket.Conn
+	ctx        context.Context
+	sendCh     chan []byte
+	uuid       uuid.UUID
+	userId     int
+	action     string
+	key        string
+	additional map[string]string
 
 	closeOnce sync.Once
 	isClosed  atomic.Bool
@@ -50,12 +51,13 @@ func newClient(ctx context.Context, hub *Hub, sendCh chan []byte, conn *websocke
 	uid := uuid.New()
 
 	return &client{
-		hub:    hub,
-		conn:   conn,
-		sendCh: sendCh,
-		ctx:    logger.ToContext(ctx, logger.FromContext(ctx).With("uuid", uid, "user", key)),
-		uuid:   uid,
-		key:    key,
+		hub:        hub,
+		conn:       conn,
+		sendCh:     sendCh,
+		ctx:        logger.ToContext(ctx, logger.FromContext(ctx).With("uuid", uid, "user", key)),
+		uuid:       uid,
+		key:        key,
+		additional: make(map[string]string),
 	}
 }
 

@@ -177,7 +177,7 @@ func (h *Hub) handleBroadcast(broadcast Broadcast) {
 	}
 }
 
-func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, action string, body []byte) {
+func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, action string, body []byte, additional ...string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -201,16 +201,22 @@ func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, act
 		}
 
 		if c.action == action || action == "" {
-			c.send(body)
+			if len(additional) != 0 {
+				for _, a := range additional {
+					if _, ok = c.additional[a]; ok {
+						c.send(body)
+					}
+				}
+			} else {
+				c.send(body)
+			}
 		}
 	}
 }
 
-func (h *Hub) RewriteAction(ctx context.Context, key string, uuid uuid.UUID, action string) {
+func (h *Hub) SetClientAdditional(ctx context.Context, key string, uuid uuid.UUID, additional map[string]string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-
-	logger.Debug(ctx, "start rewrite action", "uuid", uuid, "user", key)
 
 	cc, ok := h.clients[key]
 
@@ -221,8 +227,9 @@ func (h *Hub) RewriteAction(ctx context.Context, key string, uuid uuid.UUID, act
 
 	for _, c := range cc {
 		if c.uuid == uuid {
-			logger.Debug(ctx, fmt.Sprintf("finish rewrite action from %s to %s", c.action, action), "uuid", uuid, "user", key)
-			c.action = action
+			c.additional = additional
+			logger.Debug(ctx, "set user additional", "uuid", uuid, "user", key, "additional", additional)
+			return
 		}
 	}
 }
