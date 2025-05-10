@@ -172,13 +172,14 @@ func (h *Hub) handleBroadcast(broadcast Broadcast) {
 		return
 	}
 
-	if additional, err := h.handleFn(currentClient.ctx, broadcast); err.Code != "" {
-		h.mu.Lock()
-		currentClient.additional = additional
-		h.mu.Unlock()
-
+	additional, err := h.handleFn(currentClient.ctx, broadcast)
+	if err.Code != "" {
 		currentClient.send(err.Msg())
 	}
+
+	h.mu.Lock()
+	currentClient.additional = additional
+	h.mu.Unlock()
 }
 
 func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, action string, body []byte, additional ...string) {
