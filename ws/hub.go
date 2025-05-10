@@ -28,7 +28,7 @@ type Hub struct {
 	broadcast  chan Broadcast
 	register   chan *client
 	unregister chan *client
-	handleFn   func(ctx context.Context, broadcast Broadcast) Error
+	handleFn   func(ctx context.Context, broadcast Broadcast) (map[string]string, Error)
 	loginFn    func(ctx context.Context, broadcast *login.Broadcast) (context.Context, Error)
 	broadcasts map[string]func() Broadcast
 	keyFn      func(r *http.Request) string
@@ -36,7 +36,7 @@ type Hub struct {
 }
 
 func NewHub(
-	handleFn func(context.Context, Broadcast) Error,
+	handleFn func(context.Context, Broadcast) (map[string]string, Error),
 	loginFn func(ctx context.Context, broadcast *login.Broadcast) (context.Context, Error),
 	broadcasts map[string]func() Broadcast,
 	keyFn func(r *http.Request) string,
@@ -172,7 +172,11 @@ func (h *Hub) handleBroadcast(broadcast Broadcast) {
 		return
 	}
 
-	if err := h.handleFn(currentClient.ctx, broadcast); err.Code != "" {
+	if additional, err := h.handleFn(currentClient.ctx, broadcast); err.Code != "" {
+		h.mu.Lock()
+		currentClient.additional = additional
+		h.mu.Unlock()
+
 		currentClient.send(err.Msg())
 	}
 }
@@ -223,26 +227,6 @@ func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, act
 			} else {
 				logger.Debug(ctx, "client map does not match additional parameters", "uuid", uid, "user", key, "additional", additional)
 			}
-		}
-	}
-}
-
-func (h *Hub) SetClientAdditional(ctx context.Context, key string, uuid uuid.UUID, additional map[string]string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	cc, ok := h.clients[key]
-
-	if !ok || len(cc) == 0 {
-		logger.Warn(ctx, "invalid user id for message", "uuid", uuid, "user", key)
-		return
-	}
-
-	for _, c := range cc {
-		if c.uuid == uuid {
-			c.additional = additional
-			logger.Debug(ctx, "set user additional", "uuid", uuid, "user", key, "additional", additional)
-			return
 		}
 	}
 }
