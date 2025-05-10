@@ -201,14 +201,27 @@ func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, act
 		}
 
 		if c.action == action || action == "" {
-			if len(additional) != 0 {
-				for _, a := range additional {
-					if _, ok = c.additional[a]; ok {
-						c.send(body)
-					}
-				}
-			} else {
+			if len(additional) == 0 {
 				c.send(body)
+				continue
+			}
+
+			send := false
+			for i := 0; i < len(additional); i += 2 {
+				if i+1 >= len(additional) {
+					break
+				}
+				additionalKey, additionalValue := additional[i], additional[i+1]
+				if val, exists := c.additional[additionalKey]; exists && val == additionalValue {
+					send = true
+					break
+				}
+			}
+
+			if send {
+				c.send(body)
+			} else {
+				logger.Debug(ctx, "client map does not match additional parameters", "uuid", uid, "user", key, "additional", additional)
 			}
 		}
 	}
