@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/pprof"
 
 	"github.com/gorilla/mux"
 	"github.com/porebric/logger"
@@ -36,6 +37,12 @@ type router struct {
 
 func NewRouter(logFn func() *logger.Logger, wsHub *ws.Hub) Router {
 	r := mux.NewRouter()
+
+	r.HandleFunc("/debug/pprof/", pprof.Index)
+	r.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	r.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	r.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	r.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
 	prometheus.MustRegister(requestCounter)
 
