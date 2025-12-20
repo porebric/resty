@@ -166,16 +166,10 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/porebric/configs v1.0.1 h1:VqE61imrRu2znPJi71sFJIz5OiBv1TAXJT8KNYmcJL8=
 github.com/porebric/configs v1.0.1/go.mod h1:1HS6QyvAXvfRYdZyVc7rDONOoiVY/ZRxsRx+jNfbYU0=
-github.com/porebric/events v0.0.0-20240923044813-241759c990b5 h1:ChAgPIMsY6jps0s2BQ7B7lRJqL3AjAQCedRrIjhuQ8c=
-github.com/porebric/events v0.0.0-20240923044813-241759c990b5/go.mod h1:pyZHAAEXGlOmv8Md4mPwU+eX0SvaIDVkAvZ5ftOnhCo=
 github.com/porebric/logger v0.1.0 h1:7AX+6sFta3CO1aRpULPNdGXSv4jizU4GXnfTlKqukB4=
 github.com/porebric/logger v0.1.0/go.mod h1:uCD5mMvU0STRW6i3iJrIaNAqzltd3AgjikicJ4QmVNM=
 github.com/porebric/tracer v0.1.0 h1:wKneHM+JfQK3oMTp2dokhqCNFX9zKhrnPZ1SqWyxI/U=
 github.com/porebric/tracer v0.1.0/go.mod h1:MpJZm5XAkMorySCQJBWa8ukNWTgznMU8eOpa3fJu8Jc=
-github.com/porebric/user-sdk v0.0.0-20231203154858-fa04c6faf7d3 h1:vyHJx79KsMHgohMG3ssLyZ+q7mmlWLow7LsH61tieYM=
-github.com/porebric/user-sdk v0.0.0-20231203154858-fa04c6faf7d3/go.mod h1:WN7RB1WAhE3r/QSf/R9W6Tjqrlv7q9Aqpng2HWL9MQ4=
-github.com/porebric/ws_events v0.0.0-20240923051623-2cf97e28ca6e h1:JIPwnWQkKoNkgzwRMFYFIeG/ruEDVawA2P44BGqZVE8=
-github.com/porebric/ws_events v0.0.0-20240923051623-2cf97e28ca6e/go.mod h1:1wvhpKV414b7UIZQI2g9fQfE9ZhHvbOeyBQY5XegNlo=
 github.com/prometheus/client_golang v1.19.0 h1:ygXvpU1AoN1MhdzckN+PyD9QJOSD4x7kmXYlnfbA6JU=
 github.com/prometheus/client_golang v1.19.0/go.mod h1:ZRM9uEAypZakd+q/x7+gmsvXdURP+DABIEIjnmDdp+k=
 github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4/go.mod h1:xMI15A0UPsDsEKsMN9yxemIoYk6Tm2C1GtYGdfGttqA=
@@ -233,8 +227,6 @@ golang.org/x/crypto v0.0.0-20190510104115-cbcb75029529/go.mod h1:yigFU9vqHzYiE8U
 golang.org/x/crypto v0.0.0-20190605123033-f99c8df09eb5/go.mod h1:yigFU9vqHzYiE8UmvKecakEJjdnWj3jj499lnFckfCI=
 golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550/go.mod h1:yigFU9vqHzYiE8UmvKecakEJjdnWj3jj499lnFckfCI=
 golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
-golang.org/x/crypto v0.23.0 h1:dIJU/v2J8Mdglj/8rJ6UUOM3Zc9zLZxVZwwxMooUSAI=
-golang.org/x/crypto v0.23.0/go.mod h1:CKFgDieR+mRhux2Lsu27y0fO304Db0wZe70UKqHu0v8=
 golang.org/x/exp v0.0.0-20190121172915-509febef88a4/go.mod h1:CJ0aWSM057203Lf6IL+f9T1iT9GByDxfZKAQTCR3kQA=
 golang.org/x/exp v0.0.0-20190306152737-a1d7652674e8/go.mod h1:CJ0aWSM057203Lf6IL+f9T1iT9GByDxfZKAQTCR3kQA=
 golang.org/x/exp v0.0.0-20190510132918-efd6b22b2522/go.mod h1:ZjyILWgesfNpC6sMxTJOJm9Kp84zZh5NQWvqDGG3Qr8=

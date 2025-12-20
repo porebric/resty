@@ -1,22 +1,16 @@
 module github.com/porebric/resty
 
-go 1.22.2
-
-toolchain go1.22.7
+go 1.25
 
 require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/porebric/configs v1.0.1
-	github.com/porebric/events v0.0.0-20240923044813-241759c990b5
 	github.com/porebric/logger v0.1.0
 	github.com/porebric/tracer v0.1.0
-	github.com/porebric/user-sdk v0.0.0-20231203154858-fa04c6faf7d3
-	github.com/porebric/ws_events v0.0.0-20240923051623-2cf97e28ca6e
 	github.com/prometheus/client_golang v1.19.0
 	github.com/rs/cors v1.10.1
-	google.golang.org/grpc v1.65.0
 )
 
 require (
@@ -32,6 +26,7 @@ require (
 	github.com/prometheus/client_model v0.5.0 // indirect
 	github.com/prometheus/common v0.48.0 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
+	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/rs/zerolog v1.29.1 // indirect
 	go.opentelemetry.io/otel v1.16.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.16.0 // indirect
@@ -41,11 +36,11 @@ require (
 	go.opentelemetry.io/otel/sdk v1.16.0 // indirect
 	go.opentelemetry.io/otel/trace v1.16.0 // indirect
 	go.opentelemetry.io/proto/otlp v0.19.0 // indirect
-	golang.org/x/crypto v0.23.0 // indirect
 	golang.org/x/net v0.25.0 // indirect
 	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/text v0.15.0 // indirect
 	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1 // indirect
+	google.golang.org/grpc v1.65.0 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
