@@ -1,7 +1,9 @@
 package ws
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -33,15 +35,16 @@ var upgrader = websocket.Upgrader{
 }
 
 type client struct {
-	hub        *Hub
-	conn       *websocket.Conn
-	ctx        context.Context
-	sendCh     chan []byte
-	uuid       uuid.UUID
-	userId     int
-	action     string
-	key        string
-	additional map[string]string
+	hub     *Hub
+	conn    *websocket.Conn
+	ctx     context.Context
+	sendCh  chan []byte
+	uuid    uuid.UUID
+	userId  int
+	key     string
+	actions []string
+
+	auth atomic.Bool
 
 	closeOnce sync.Once
 	isClosed  atomic.Bool
@@ -51,13 +54,15 @@ func newClient(ctx context.Context, hub *Hub, sendCh chan []byte, conn *websocke
 	uid := uuid.New()
 
 	return &client{
-		hub:        hub,
-		conn:       conn,
-		sendCh:     sendCh,
-		ctx:        logger.ToContext(ctx, logger.FromContext(ctx).With("uuid", uid, "user", key)),
-		uuid:       uid,
-		key:        key,
-		additional: make(map[string]string),
+		hub:       hub,
+		conn:      conn,
+		sendCh:    sendCh,
+		ctx:       logger.ToContext(ctx, logger.FromContext(ctx).With("uuid", uid, "user", key)),
+		uuid:      uid,
+		key:       key,
+		actions:   make([]string, 0),
+		auth:      atomic.Bool{},
+		closeOnce: sync.Once{},
 	}
 }
 
@@ -92,11 +97,18 @@ func (c *client) read() {
 			break
 		}
 
-		if b := getBroadcast(c.ctx, message, c.key, c.uuid, c.hub.broadcasts); b != nil {
-			c.hub.broadcast <- b
-		} else {
+		msg := new(LoginMessage)
+
+		if err = json.Unmarshal(bytes.TrimSpace(bytes.Replace(message, newline, space, -1)), msg); err != nil {
+			logger.Warn(c.ctx, "parse message", "client", c.key, "body", string(message), "error", err)
 			c.send(newError(InvalidMsgPrefix, "invalid body or action", c.key).Msg())
+			continue
 		}
+
+		msg.key = c.key
+		msg.uuid = c.uuid
+
+		c.hub.loginMsgCh <- msg
 	}
 }
 
@@ -175,12 +187,12 @@ func (c *client) waitAuth() {
 	for {
 		select {
 		case <-ctx.Done():
-			if c.action == "" {
+			if !c.auth.Load() {
 				c.hub.unregister <- c
 			}
 			return
 		case <-ticker.C:
-			if c.action != "" {
+			if c.auth.Load() {
 				return
 			}
 		}

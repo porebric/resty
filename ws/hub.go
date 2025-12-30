@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/porebric/logger"
-	"github.com/porebric/resty/ws/login"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -25,36 +24,22 @@ var activeClients = promauto.NewGauge(
 
 type Hub struct {
 	clients    map[string][]*client
-	broadcast  chan Broadcast
+	loginMsgCh chan *LoginMessage
 	register   chan *client
 	unregister chan *client
-	handleFn   func(ctx context.Context, broadcast Broadcast) (map[string]string, Error)
-	loginFn    func(ctx context.Context, broadcast *login.Broadcast) (context.Context, Error)
-	broadcasts map[string]func() Broadcast
+	loginFn    func(context.Context, *LoginMessage) (context.Context, Error)
 	keyFn      func(r *http.Request) string
-	mu         sync.Mutex
+	mu         sync.RWMutex
 }
 
-func NewHub(
-	handleFn func(context.Context, Broadcast) (map[string]string, Error),
-	loginFn func(ctx context.Context, broadcast *login.Broadcast) (context.Context, Error),
-	broadcasts map[string]func() Broadcast,
-	keyFn func(r *http.Request) string,
-) *Hub {
-	broadcasts[login.Action] = func() Broadcast {
-		return new(login.Broadcast)
-	}
-
+func NewHub(loginFn func(ctx context.Context, broadcast *LoginMessage) (context.Context, Error), keyFn func(r *http.Request) string) *Hub {
 	hub := &Hub{
-		broadcast:  make(chan Broadcast, 1024),
+		loginMsgCh: make(chan *LoginMessage, 1024),
 		register:   make(chan *client, 1024),
 		unregister: make(chan *client, 1024),
 		clients:    make(map[string][]*client),
-		handleFn:   handleFn,
 		loginFn:    loginFn,
-		broadcasts: broadcasts,
 		keyFn:      keyFn,
-		mu:         sync.Mutex{},
 	}
 
 	return hub
@@ -67,7 +52,7 @@ func (h *Hub) Run() {
 			h.doRegister(registerClient)
 		case unregisterClient := <-h.unregister:
 			h.doUnRegister(unregisterClient)
-		case broadcast := <-h.broadcast:
+		case broadcast := <-h.loginMsgCh:
 			h.handleBroadcast(broadcast)
 		}
 	}
@@ -114,77 +99,75 @@ func (h *Hub) doRegister(client *client) {
 	}
 }
 
-func (h *Hub) handleBroadcast(broadcast Broadcast) {
-	h.mu.Lock()
-
-	if broadcast == nil {
-		h.mu.Unlock()
+func (h *Hub) handleBroadcast(loginMsg *LoginMessage) {
+	if loginMsg == nil {
 		return
 	}
 
-	clients, ok := h.clients[broadcast.GetKey()]
+	h.mu.RLock()
+	clients, ok := h.clients[loginMsg.GetKey()]
 	if !ok {
-		h.mu.Unlock()
+		h.mu.RUnlock()
 		return
 	}
 
+	// Находим клиента под RLock
 	var currentClient *client
-
 	for _, c := range clients {
-		if c.uuid == broadcast.GetUuid() {
+		if c.uuid == loginMsg.GetUuid() {
 			currentClient = c
 			break
 		}
 	}
 
-	h.mu.Unlock()
-
 	if currentClient == nil {
+		h.mu.RUnlock()
 		return
 	}
 
-	logger.Debug(currentClient.ctx, "get message", "uuid", currentClient.uuid, "user", currentClient.key, "body", broadcast)
+	clientRef := currentClient
+	h.mu.RUnlock()
 
-	if b, isLogin := broadcast.(*login.Broadcast); isLogin {
-		var err Error
-		if currentClient.ctx, err = h.loginFn(currentClient.ctx, b); err.Code == "" {
-			if _, actionOk := currentClient.hub.broadcasts[b.Action]; !actionOk {
-				currentClient.send(newError(InvalidMsgPrefix, "invalid action", currentClient.key).Msg())
-				return
-			}
+	logger.Debug(clientRef.ctx, "get message", "uuid", clientRef.uuid, "user", clientRef.key, "body", loginMsg)
 
-			currentClient.action = b.Action
-			h.SendToClient(
-				currentClient.ctx,
-				currentClient.key,
-				&currentClient.uuid,
-				currentClient.action,
-				[]byte(fmt.Sprintf(`{"login": true, "action": "%s", "uuid": "%s"}`, b.Action, currentClient.uuid)),
-			)
-		} else {
-			currentClient.send(err.Msg())
-		}
+	var err Error
+	ctx, err := h.loginFn(clientRef.ctx, loginMsg)
+
+	if err.Code == "" {
+		clientRef.auth.Store(true)
+
+		clientRef.hub.mu.Lock()
+		clientRef.actions = loginMsg.Actions
+		clientRef.hub.mu.Unlock()
+
+		h.SendToClient(
+			ctx,
+			clientRef.key,
+			&clientRef.uuid,
+			[]byte(fmt.Sprintf(`{"login": true, "uuid": "%s"}`, clientRef.uuid)),
+		)
+
 		return
 	}
 
-	if currentClient.action == "" {
-		currentClient.send(newError(AuthPrefix, "not auth", currentClient.key).Msg())
-		return
+	if !clientRef.auth.Load() {
+		clientRef.send(newError(AuthPrefix, "not auth", clientRef.key).Msg())
 	}
-
-	additional, err := h.handleFn(currentClient.ctx, broadcast)
-	if err.Code != "" {
-		currentClient.send(err.Msg())
-	}
-
-	h.mu.Lock()
-	currentClient.additional = additional
-	h.mu.Unlock()
 }
 
-func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, action string, body []byte, additional ...string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, body []byte, availableActions ...string) {
+	if key == "" {
+		return
+	}
+
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	cc, ok := h.clients[key]
+	if !ok || len(cc) == 0 {
+		logger.Warn(ctx, "invalid user id for message", "user", key)
+		return
+	}
 
 	uid := ""
 	if uuid != nil {
@@ -193,41 +176,51 @@ func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, act
 
 	logger.Debug(ctx, "get response for client", "uuid", uid, "user", key)
 
-	cc, ok := h.clients[key]
-
-	if !ok || len(cc) == 0 {
-		logger.Warn(ctx, "invalid user id for message", "uuid", uid, "user", key)
-		return
-	}
-
 	for _, c := range cc {
 		if uuid != nil && c.uuid != *uuid {
 			continue
 		}
 
-		if c.action == action || action == "" {
-			if len(additional) == 0 {
-				c.send(body)
-				continue
-			}
+		if len(availableActions) == 0 {
+			c.send(body)
+			continue
+		}
 
-			send := false
-			for i := 0; i < len(additional); i += 2 {
-				if i+1 >= len(additional) {
-					break
-				}
-				additionalKey, additionalValue := additional[i], additional[i+1]
-				if val, exists := c.additional[additionalKey]; exists && val == additionalValue {
-					send = true
-					break
-				}
+		send := true
+		for _, availableAction := range availableActions {
+			if !slices.Contains(c.actions, availableAction) {
+				send = false
+				break
 			}
+		}
 
-			if send {
-				c.send(body)
-			} else {
-				logger.Debug(ctx, "client map does not match additional parameters", "uuid", uid, "user", key, "additional", additional)
-			}
+		if !send {
+			logger.Debug(ctx, "client map does not match actions parameters",
+				"uuid", c.uuid.String(), "user", key,
+				"actions", availableActions)
+			continue
+		}
+
+		c.send(body)
+	}
+}
+
+func (h *Hub) AddActionToClients(key, action string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	for _, c := range h.clients[key] {
+		c.actions = append(c.actions, action)
+	}
+}
+
+func (h *Hub) AddActionToClient(key, action string, id uuid.UUID) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	for _, c := range h.clients[key] {
+		if c.uuid == id {
+			c.actions = append(c.actions, action)
 		}
 	}
 }
