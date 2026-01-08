@@ -68,9 +68,7 @@ func newClient(ctx context.Context, hub *Hub, sendCh chan []byte, conn *websocke
 
 func (c *client) read() {
 	defer func() {
-		if err := c.conn.Close(); err != nil {
-			logger.Error(c.ctx, err, "failed to close connection")
-		}
+		c.safeClose()
 		c.hub.unregister <- c
 	}()
 
