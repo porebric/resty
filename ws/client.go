@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,10 +14,10 @@ import (
 )
 
 const (
-	writeWait      = 10 * time.Second    // Время, разрешенное на отправку сообщения
-	pongWait       = 60 * time.Second    // Время, разрешенное для чтения следующего pong-сообщения
-	pingPeriod     = (pongWait * 9) / 10 // Период отправки ping-сообщений
-	maxMessageSize = 512                 // Максимальный размер сообщения, разрешенный от клиента
+	writeWait      = 10 * time.Second    // max time allowed for writing a message
+	pongWait       = 60 * time.Second    // max time allowed for reading the next pong
+	pingPeriod     = (pongWait * 9) / 10 // interval for sending ping frames
+	maxMessageSize = 512                 // max size of a single message from client (login payload)
 )
 
 var (
@@ -26,23 +25,16 @@ var (
 	space   = []byte{' '}
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
-
 type client struct {
-	hub     *Hub
-	conn    *websocket.Conn
-	ctx     context.Context
-	sendCh  chan []byte
-	uuid    uuid.UUID
-	userId  int
-	key     string
-	actions []string
+	hub    *Hub
+	conn   *websocket.Conn
+	ctx    context.Context
+	sendCh chan []byte
+	uuid   uuid.UUID
+	key    string
+
+	actions   []string
+	actionsMu sync.RWMutex
 
 	auth atomic.Bool
 
@@ -74,13 +66,13 @@ func (c *client) read() {
 
 	c.conn.SetReadLimit(maxMessageSize)
 	if err := c.conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-		logger.Error(c.ctx, err, "new read deadline")
+		logger.Error(c.ctx, err, "set read deadline")
 		return
 	}
 
 	c.conn.SetPongHandler(func(string) error {
 		if err := c.conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-			logger.Error(c.ctx, err, "new read deadline")
+			logger.Error(c.ctx, err, "set read deadline on pong")
 			return err
 		}
 		return nil
@@ -162,6 +154,9 @@ func (c *client) safeClose() {
 	})
 }
 
+// send enqueues a message for the write goroutine. It does not unregister on
+// timeout so that a temporarily slow write (e.g. during ping) does not drop
+// the connection; the connection is still closed by read errors or pong timeout.
 func (c *client) send(data []byte) {
 	if c.isClosed.Load() {
 		return
@@ -169,9 +164,8 @@ func (c *client) send(data []byte) {
 
 	select {
 	case c.sendCh <- data:
-	case <-time.After(500 * time.Millisecond):
-		logger.Warn(c.ctx, "send timeout")
-		c.hub.unregister <- c
+	case <-time.After(2 * time.Second):
+		logger.Warn(c.ctx, "send buffer full, dropping message")
 	}
 }
 

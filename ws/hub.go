@@ -45,6 +45,8 @@ func NewHub(loginFn func(ctx context.Context, broadcast *LoginMessage) (context.
 	return hub
 }
 
+// Run processes register, unregister, and login messages. Login handling runs
+// in a goroutine so a slow loginFn does not block the hub.
 func (h *Hub) Run() {
 	for {
 		select {
@@ -52,8 +54,8 @@ func (h *Hub) Run() {
 			h.doRegister(registerClient)
 		case unregisterClient := <-h.unregister:
 			h.doUnRegister(unregisterClient)
-		case broadcast := <-h.loginMsgCh:
-			h.handleBroadcast(broadcast)
+		case loginMsg := <-h.loginMsgCh:
+			go h.handleBroadcast(loginMsg)
 		}
 	}
 }
@@ -84,19 +86,20 @@ func (h *Hub) doUnRegister(client *client) {
 	}
 }
 
-func (h *Hub) doRegister(client *client) {
+func (h *Hub) doRegister(c *client) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	h.clients[client.key] = append(h.clients[client.key], client)
-	activeClients.Inc()
-
-	logger.Debug(client.ctx, "register user", "uuid", client.uuid, "user", client.key)
-
-	if len(h.clients[client.key]) >= maxUserConnections+1 {
-		client.send(newError(MaxConnectionsPrefix, fmt.Sprintf("max connections %d", maxUserConnections), client.key).Msg())
-		client.send(nil)
+	if len(h.clients[c.key]) >= maxUserConnections {
+		h.mu.Unlock()
+		c.send(newError(MaxConnectionsPrefix, fmt.Sprintf("max connections %d", maxUserConnections), c.key).Msg())
+		c.safeClose()
+		h.unregister <- c
+		return
 	}
+	h.clients[c.key] = append(h.clients[c.key], c)
+	activeClients.Inc()
+	h.mu.Unlock()
+
+	logger.Debug(c.ctx, "register user", "uuid", c.uuid, "user", c.key)
 }
 
 func (h *Hub) handleBroadcast(loginMsg *LoginMessage) {
@@ -111,7 +114,6 @@ func (h *Hub) handleBroadcast(loginMsg *LoginMessage) {
 		return
 	}
 
-	// Находим клиента под RLock
 	var currentClient *client
 	for _, c := range clients {
 		if c.uuid == loginMsg.GetUuid() {
@@ -135,10 +137,9 @@ func (h *Hub) handleBroadcast(loginMsg *LoginMessage) {
 
 	if err.Code == "" {
 		clientRef.auth.Store(true)
-
-		clientRef.hub.mu.Lock()
+		clientRef.actionsMu.Lock()
 		clientRef.actions = loginMsg.Actions
-		clientRef.hub.mu.Unlock()
+		clientRef.actionsMu.Unlock()
 
 		h.SendToClient(
 			ctx,
@@ -155,72 +156,83 @@ func (h *Hub) handleBroadcast(loginMsg *LoginMessage) {
 	}
 }
 
+// SendToClient sends body to clients for key (and optional uuid). Does not hold
+// the hub lock during send so message transmission is not blocked by register/unregister.
 func (h *Hub) SendToClient(ctx context.Context, key string, uuid *uuid.UUID, body []byte, availableActions ...string) {
 	if key == "" {
 		return
 	}
 
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
 	cc, ok := h.clients[key]
 	if !ok || len(cc) == 0 {
+		h.mu.RUnlock()
 		logger.Warn(ctx, "invalid user id for message", "user", key)
 		return
 	}
+
+	// Build list of clients to send to while holding hub RLock and each client's actionsMu.
+	toSend := make([]*client, 0, len(cc))
+	for _, c := range cc {
+		if uuid != nil && c.uuid != *uuid {
+			continue
+		}
+		if len(availableActions) == 0 {
+			toSend = append(toSend, c)
+			continue
+		}
+		c.actionsMu.RLock()
+		match := true
+		for _, a := range availableActions {
+			if !slices.Contains(c.actions, a) {
+				match = false
+				break
+			}
+		}
+		c.actionsMu.RUnlock()
+		if match {
+			toSend = append(toSend, c)
+		}
+	}
+	h.mu.RUnlock()
 
 	uid := ""
 	if uuid != nil {
 		uid = uuid.String()
 	}
-
 	logger.Debug(ctx, "get response for client", "uuid", uid, "user", key)
 
-	for _, c := range cc {
-		if uuid != nil && c.uuid != *uuid {
-			continue
-		}
-
-		if len(availableActions) == 0 {
-			c.send(body)
-			continue
-		}
-
-		send := true
-		for _, availableAction := range availableActions {
-			if !slices.Contains(c.actions, availableAction) {
-				send = false
-				break
-			}
-		}
-
-		if !send {
-			logger.Debug(ctx, "client map does not match actions parameters",
-				"uuid", c.uuid.String(), "user", key,
-				"actions", availableActions)
-			continue
-		}
-
+	for _, c := range toSend {
 		c.send(body)
 	}
 }
 
 func (h *Hub) AddActionToClients(key, action string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	h.mu.RLock()
+	cc := make([]*client, len(h.clients[key]))
+	copy(cc, h.clients[key])
+	h.mu.RUnlock()
 
-	for _, c := range h.clients[key] {
+	for _, c := range cc {
+		c.actionsMu.Lock()
 		c.actions = append(c.actions, action)
+		c.actionsMu.Unlock()
 	}
 }
 
 func (h *Hub) AddActionToClient(key, action string, id uuid.UUID) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	h.mu.RLock()
+	cc := make([]*client, len(h.clients[key]))
+	copy(cc, h.clients[key])
+	h.mu.RUnlock()
 
-	for _, c := range h.clients[key] {
-		if c.uuid == id {
-			c.actions = append(c.actions, action)
+	for _, c := range cc {
+		if c.uuid != id {
+			continue
 		}
+		c.actionsMu.Lock()
+		c.actions = append(c.actions, action)
+		c.actionsMu.Unlock()
+		break
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/porebric/resty/responses"
 	"net/http"
 	"runtime/debug"
 
@@ -12,10 +11,11 @@ import (
 	"github.com/porebric/resty/errors"
 	"github.com/porebric/resty/middleware"
 	"github.com/porebric/resty/requests"
+	"github.com/porebric/resty/responses"
 )
 
 func getDeferCatchPanic(log *logger.Logger, w http.ResponseWriter) {
-	if rec := recover(); rec != any(nil) {
+	if rec := recover(); rec != nil {
 		logger.Error(
 			logger.ToContext(context.Background(), log),
 			fmt.Errorf("error: %v", rec), "critical error", "stacktrace", string(debug.Stack()),
